@@ -1,3 +1,27 @@
+---
+id: c172_poh
+title: C172 POH (placeholder)
+kind: poh
+revision: "A"
+limits:
+  - id: vfe_10
+    signal: ias_kt
+    max: 110
+    when: "flaps_idx == 1"
+    section: "Airspeed limitations — wing flaps"
+    text: "Max 110 KIAS with flaps 10° (Vfe)"
+  - id: vfe_full
+    signal: ias_kt
+    max: 85
+    when: "flaps_idx >= 2"
+    section: "Airspeed limitations — wing flaps"
+    text: "Max 85 KIAS with flaps beyond 10° (Vfe)"
+  - id: vne
+    signal: ias_kt
+    max: 163
+    section: "Airspeed limitations"
+    text: "Never exceed 163 KIAS (Vne)"
+---
 # C172 POH (placeholder notes)
 
 > PLACEHOLDER. Paraphrased summary for development only. Replace with extracts from the
@@ -7,6 +31,9 @@
 ## Airspeed limitations — wing flaps
 Maximum flap extended speed (Vfe): flaps 10° 110 KIAS; flaps 10° to 30° 85 KIAS.
 Do not extend flaps beyond 10° above 85 KIAS.
+
+## Airspeed limitations
+Never exceed speed (Vne) 163 KIAS.
 
 ## Normal takeoff
 Wing flaps 0° to 10°. Carburettor heat cold. Throttle full open. Elevator control: lift

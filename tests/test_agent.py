@@ -1,37 +1,51 @@
 import json
 
-from sim2sop.agent import llm as llm_mod
+import pytest
+
 from sim2sop.agent.graph import build_graph
 from sim2sop.agent.llm import LLMClient, LLMReply, ToolCall, get_llm
+from sim2sop.agent.planner import plan
 from sim2sop.agent.verifier import verify_step
 from sim2sop.agent.writer import LLMWriter
 from sim2sop.ingest import ingest_run
 from sim2sop.learn import memory
+from sim2sop.learn.consensus import typical_range
 from sim2sop.profiles import load_profile
 from sim2sop.rag.index import ReferenceIndex
-from sim2sop.schema import Fact, Step
+from sim2sop.schema import Fact, Limit, Step
 
 
 def _step(**kw) -> Step:
     facts = {
-        "trigger.ias_kt": Fact(signal="ias_kt", value=55.2, unit="kt", tol=1.4),
-        "result.vs_fpm": Fact(signal="vs_fpm", value=-410.0, unit="fpm", tol=150),
+        "trigger.ias_kt": Fact(signal="ias_kt", value=55.2, lo=54, hi=57, unit="kt", limit_max=60),
+        "result.vs_fpm": Fact(signal="vs_fpm", value=-410.0, lo=-450, hi=-370, unit="fpm"),
     }
     return Step(id="s01", phase="takeoff", key="threshold:ias_kt:above:55", kind="threshold",
                 signal="ias_kt", label="Rotate", facts=facts, **kw)
 
 
-def test_verifier_accepts_facts_and_rejects_invented_numbers():
+def test_verifier_accepts_facts_and_rejects_invented_or_out_of_limit_numbers():
     p = load_profile("air_c172_circuit")
-    good = _step(trigger="When airspeed reaches 55 kt.", expected="Descend at 410 fpm.",
-                 tolerance="airspeed ±1 kt (from 1 run)")
+    good = _step(trigger="When airspeed reaches 55 kt.", typical="Instructors: 54–57 kt; then -450 to -370 fpm.")
     assert verify_step(good, p).ok
-    bad = _step(trigger="When airspeed reaches 60 kt.")
-    v = verify_step(bad, p)
-    assert not v.ok and "60" in v.errors[0]
+    v = verify_step(_step(trigger="When airspeed reaches 70 kt."), p)
+    assert not v.ok and "70" in v.errors[0]
     callout = _step(trigger="When airspeed reaches 55 kt.", intent='"Power 1500"')
     v = verify_step(callout, p)
     assert v.ok and v.warnings  # callout numbers warn, they do not fail the step
+    # A number that matches telemetry but is past the hard limit fails.
+    step = _step()
+    step.facts["trigger.ias_kt"] = Fact(signal="ias_kt", value=89, lo=88, hi=90, unit="kt", limit_max=85)
+    step.trigger = "At 89 kt."
+    v = verify_step(step, p)
+    assert not v.ok and "hard limit" in v.errors[0]
+
+
+def test_typical_range_is_robust_to_one_bad_run():
+    _, lo, hi = typical_range([55, 55.5, 54.8, 55.2, 70], default_tol=5)
+    assert hi - lo < 4  # IQR ignores the 70 kt outlier
+    _, lo1, hi1 = typical_range([55], default_tol=5)
+    assert (hi1 - lo1) == pytest.approx(10)
 
 
 class FakeLLM(LLMClient):
@@ -47,22 +61,36 @@ class FakeLLM(LLMClient):
         prompt = messages[-1]["content"]
         failed = "FAILED VERIFICATION" in prompt
         payload = json.loads(prompt.split("STEP:\n", 1)[1].split("\n\n", 1)[0])
-        ias = next((v.split()[0] for k, v in payload["FACTS"].items() if k == "trigger.ias_kt"), "0")
+        ias = payload["FACTS"]["trigger.ias_kt"].split()[1]  # "typical 55 kt (range ...)"
         stated = ias if failed else "12345"
         return LLMReply(text=json.dumps({
             "trigger": f"At {stated} kt.", "action": payload["step_label"], "intent": None,
-            "expected": "", "tolerance": ""}))
+            "typical": "", "limit": ""}))
 
 
 def test_graph_rewrites_until_verified(data_dir, air_raw):
     p = load_profile("air_c172_circuit")
-    run = ingest_run(air_raw[0], p)
-    refs = ReferenceIndex.for_domain(p.references)
+    run = ingest_run(air_raw[1], p)
+    refs = ReferenceIndex([])
     fake = FakeLLM()
-    graph = build_graph(p, refs, LLMWriter(fake, p, refs, use_tools=False), max_rounds=2)
-    state = graph.invoke({"runs": [run], "previous": None})
+    writer = LLMWriter(fake, p, refs, use_tools=False)
+    graph = build_graph(p, writer, lambda: plan([run], p, refs, [], []), max_rounds=2)
+    state = graph.invoke({})
     assert all(s.verified for s in state["steps"])
     assert fake.calls == 2 * len(state["steps"])  # one failed draft + one rewrite per step
+
+
+def test_limit_text_is_quoted_not_model_written(data_dir, air_raw):
+    p = load_profile("air_c172_circuit")
+    run = ingest_run(air_raw[1], p)
+    lim = Limit(id="vfe", signal="ias_kt", max=85, when="flaps_idx >= 2", text="Max 85 KIAS with flaps beyond 10°",
+                doc_title="POH", revision="A")
+    result = plan([run], p, ReferenceIndex([]), [lim], [])
+    flaps20 = next(s for s in result.steps if s.key == "toggle:flaps_idx:2")
+    flaps10 = next(s for s in result.steps if s.key == "toggle:flaps_idx:1")
+    assert [x.id for x in flaps20.limits] == ["vfe"] and not flaps10.limits
+    out = LLMWriter(FakeLLM(), p, ReferenceIndex([]), use_tools=False).write(flaps20)
+    assert out["limit"].startswith("Max 85 KIAS")
 
 
 def test_providers_build_requests_and_parse_replies(monkeypatch):
@@ -101,15 +129,14 @@ def test_providers_build_requests_and_parse_replies(monkeypatch):
 
 
 def test_unknown_provider_rejected():
-    import pytest
     with pytest.raises(ValueError):
-        llm_mod.get_llm(provider="nope")
+        get_llm(provider="nope")
 
 
 def test_correction_pattern_round_trip():
-    facts = {"result.ias_kt": Fact(signal="ias_kt", value=81.3, unit="kt", tol=3)}
-    pattern = memory.to_pattern("Select Flaps 10°, hold 81 kt.", facts, label="Flaps 10°")
-    assert pattern == "Select {label}, hold {fact:result.ias_kt} kt."
-    other = {"result.ias_kt": Fact(signal="ias_kt", value=72.0, unit="kt", tol=3)}
-    assert memory.fill_pattern(pattern, other, "Flaps 20°", None) == "Select Flaps 20°, hold 72 kt."
+    facts = {"result.ias_kt": Fact(signal="ias_kt", value=81.3, lo=79, hi=84, unit="kt")}
+    pattern = memory.to_pattern("Select Flaps 10°, hold 81 kt (79–84).", facts, label="Flaps 10°")
+    assert pattern == "Select {label}, hold {fact:result.ias_kt} kt ({fact:result.ias_kt.lo}–{fact:result.ias_kt.hi})."
+    other = {"result.ias_kt": Fact(signal="ias_kt", value=72.0, lo=70, hi=74, unit="kt")}
+    assert memory.fill_pattern(pattern, other, "Flaps 20°", None) == "Select Flaps 20°, hold 72 kt (70–74)."
     assert memory.fill_pattern(pattern, {}, "Flaps 20°", None) is None

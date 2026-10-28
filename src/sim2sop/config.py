@@ -25,7 +25,8 @@ _load_dotenv(ROOT / ".env")
 DATA_DIR = Path(os.environ.get("SIM2SOP_DATA", ROOT / "data"))
 RAW_DIR = DATA_DIR / "raw"          # generated / recorded source files, as the sim writes them
 RUNS_DIR = DATA_DIR / "runs"        # ingested runs in the common schema
-SOPS_DIR = DATA_DIR / "sops"        # versioned SOP outputs
+GUIDELINES_DIR = DATA_DIR / "guidelines"   # versioned guideline outputs (see guidelines_store)
+LIBRARY_DIR = DATA_DIR / "references"     # registered reference SOPs (see references.py)
 MEMORY_DIR = DATA_DIR / "memory"    # instructor corrections
 PROFILES_DIR = Path(os.environ.get("SIM2SOP_PROFILES", ROOT / "profiles"))
 REFERENCES_DIR = Path(os.environ.get("SIM2SOP_REFERENCES", ROOT / "references"))

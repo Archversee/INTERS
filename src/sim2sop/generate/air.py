@@ -9,8 +9,13 @@ Output per run (data/raw/air/<run_id>/):
 The flight is a scripted kinematic model, not a flight-dynamics model: targets for
 airspeed, vertical speed, heading and throttle are set by the script and the state
 follows them with simple lags. Speeds and heights follow C172 POH-style values with
-run-to-run variation and sensor noise, so consensus and tolerance bands have
-something to learn from.
+run-to-run variation and sensor noise, so consensus and typical ranges have something
+to learn from.
+
+Scenario hooks for the demo:
+  variant 0       selects flaps 20 at about 88 kt, above Vfe 85 KIAS (a limit violation)
+  obstacle=True   "new obstacle" environment: wider downwind (longer crosswind leg) and
+                  a later descent, so the final approach is unchanged
 """
 
 from __future__ import annotations
@@ -61,6 +66,8 @@ class _Sim:
         self.t_throttle = 0.0
         self.rows: list[dict] = []
         self.notes: list[dict] = []
+        self.origin = (0.0, 0.0)  # take-off roll start, for the runway frame
+        self.scheduled: list[tuple[float, str, float]] = []
 
     # --- script helpers ---------------------------------------------------------------
     def say(self, text: str) -> None:
@@ -77,6 +84,16 @@ class _Sim:
         while not cond() and self.t < end:
             self.step()
 
+    def at(self, delay_s: float, **targets: float) -> None:
+        """Change targets later, e.g. s.at(20, t_vs=-400)."""
+        self.scheduled += [(self.t + delay_s, k, v) for k, v in targets.items()]
+
+    def offset_nm(self) -> float:
+        """Distance from the extended runway centreline."""
+        dx, dy = self.x - self.origin[0], self.y - self.origin[1]
+        h = math.radians(RWY_HDG)
+        return abs(dx * math.cos(h) - dy * math.sin(h)) / 1852.0
+
     def turn_to(self, hdg: float) -> None:
         self.t_hdg = hdg % 360.0
         self.until(lambda: abs(_wrap180(self.t_hdg - self.hdg)) < 1.0, max_s=120)
@@ -84,6 +101,9 @@ class _Sim:
     # --- dynamics ----------------------------------------------------------------------
     def step(self) -> None:
         r = self.rng
+        for item in [x for x in self.scheduled if x[0] <= self.t]:
+            setattr(self, item[1], item[2])
+            self.scheduled.remove(item)
         self.throttle += np.clip(self.t_throttle - self.throttle, -40 * DT, 40 * DT)
         rpm_target = 700 + 18.0 * self.throttle + (80 if not self.on_ground else 0)
         self.rpm += (rpm_target - self.rpm) * DT / 1.5
@@ -129,8 +149,9 @@ class _Sim:
         })
 
 
-def simulate_circuit(seed: int, variant: int = 0) -> tuple[pd.DataFrame, list[dict]]:
-    """Fly one circuit. `variant` adds technique differences between runs."""
+def simulate_circuit(seed: int, variant: int = 0, obstacle: bool = False) -> tuple[pd.DataFrame, list[dict]]:
+    """Fly one circuit. `variant` adds technique differences between runs; `obstacle`
+    flies the wider pattern used after the new-obstacle NOTAM."""
     rng = np.random.default_rng(seed)
     p = {
         "vr": rng.normal(55, 1.2),
@@ -143,7 +164,9 @@ def simulate_circuit(seed: int, variant: int = 0) -> tuple[pd.DataFrame, list[di
         "flaps10_ias": rng.normal(88, 2),
         "approach_ias": rng.normal(70, 1.5),
         "final_ias": rng.normal(65, 1.2),
+        "final_turn_nm": rng.normal(0.38, 0.02),
     }
+    overspeed = variant == 0
     s = _Sim(rng)
 
     # Taxi
@@ -165,6 +188,7 @@ def simulate_circuit(seed: int, variant: int = 0) -> tuple[pd.DataFrame, list[di
         s.say("Lights on, lined up")
     s.hold(rng.uniform(2, 4))
     s.t_throttle, s.t_ias = 100, 80
+    s.origin = (s.x, s.y)
     s.say(rng.choice(["Full power, rolling", "Full throttle, rolling"]))
     if variant % 2 == 1:
         s.hold(2)
@@ -183,7 +207,7 @@ def simulate_circuit(seed: int, variant: int = 0) -> tuple[pd.DataFrame, list[di
     s.until(lambda: s.agl >= p["pattern_agl"] - 40)
     s.t_vs, s.t_ias, s.t_throttle = 0, p["downwind_ias"], p["cruise_power"]
     s.say(rng.choice(["Level at circuit height, power set", "Circuit altitude, cruise power"]))
-    crosswind_leg_s = rng.normal(45, 3)
+    crosswind_leg_s = rng.normal(45, 3) + (25 if obstacle else 0)
     s.until(lambda: s.t - t_cw >= crosswind_leg_s)
 
     # Downwind
@@ -198,17 +222,22 @@ def simulate_circuit(seed: int, variant: int = 0) -> tuple[pd.DataFrame, list[di
     s.until(lambda: s.ias <= p["flaps10_ias"])
     s.flaps = 1
     s.say(rng.choice(["Flaps 10 on downwind", "Flaps ten"]))
-    s.t_vs, s.t_ias = -400, 80
+    s.t_ias = 90 if overspeed else 80
+    if obstacle:
+        # Longer base leg ahead: hold circuit height for longer before descending.
+        s.at(28, t_vs=-400)
+    else:
+        s.t_vs = -400
     s.hold(rng.normal(18, 3))
 
     # Base
     s.say("Turning base")
     s.turn_to(RWY_HDG + 90)
-    s.hold(2)
+    s.hold(3.5 if overspeed else 2)
     s.flaps = 2
     s.say("Flaps 20")
     s.t_ias = p["approach_ias"]
-    s.hold(rng.normal(14, 3))
+    s.until(lambda: s.offset_nm() <= p["final_turn_nm"], max_s=120)
 
     # Final
     s.say("Turning final")
@@ -281,19 +310,37 @@ def to_simconnect(df: pd.DataFrame) -> pd.DataFrame:
     })
 
 
+def _write_run(out_dir: Path, run_id: str, df: pd.DataFrame, notes: list[dict], meta: dict) -> Path:
+    run_dir = out_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    to_simconnect(df).to_csv(run_dir / "telemetry.csv", index=False)
+    (run_dir / "annotations.json").write_text(json.dumps(notes, indent=2))
+    (run_dir / "meta.json").write_text(json.dumps({
+        "run_id": run_id, "domain": "air", "procedure": "c172_circuit",
+        "source_format": "msfs_simconnect", "generated": True, **meta}, indent=2))
+    return run_dir
+
+
 def generate_air_runs(out_dir: Path, n: int = 5, seed: int = 172) -> list[Path]:
+    """Baseline circuits. Run 1 (variant 0) selects flaps 20 above Vfe."""
     paths = []
     for i in range(n):
-        run_id = f"air_c172_circuit_{i + 1:02d}"
         df, notes = simulate_circuit(seed + i, variant=i)
-        run_dir = out_dir / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        to_simconnect(df).to_csv(run_dir / "telemetry.csv", index=False)
-        (run_dir / "annotations.json").write_text(json.dumps(notes, indent=2))
-        (run_dir / "meta.json").write_text(json.dumps({
-            "run_id": run_id, "domain": "air", "procedure": "c172_circuit",
-            "source_format": "msfs_simconnect", "instructor": f"instructor_{(i % 2) + 1}",
-            "generated": True, "seed": seed + i, "variant": i,
-        }, indent=2))
-        paths.append(run_dir)
+        paths.append(_write_run(out_dir, f"air_c172_circuit_{i + 1:02d}", df, notes, {
+            "instructor": f"instructor_{(i % 2) + 1}", "seed": seed + i, "variant": i}))
+    return paths
+
+
+OBSTACLE_ENV = "new-obstacle"
+
+
+def generate_obstacle_runs(out_dir: Path, n: int = 3, seed: int = 500) -> list[Path]:
+    """Circuits flown after the new-obstacle NOTAM, tagged with its environment."""
+    paths = []
+    for i in range(n):
+        variant = 4 + 2 * i  # even variants: no short-final power correction or extra callouts
+        df, notes = simulate_circuit(seed + i, variant=variant, obstacle=True)
+        paths.append(_write_run(out_dir, f"air_c172_circuit_obstacle_{i + 1:02d}", df, notes, {
+            "instructor": f"instructor_{(i % 2) + 1}", "seed": seed + i, "variant": variant,
+            "environment": OBSTACLE_ENV}))
     return paths

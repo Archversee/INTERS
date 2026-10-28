@@ -8,6 +8,7 @@ one YAML file (plus an adapter if the source format is new).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -74,7 +75,7 @@ class EventsSpec(BaseModel):
     thresholds: list[ThresholdSpec] = Field(default_factory=list)
     controls: list[ControlSpec] = Field(default_factory=list)
     turns: TurnSpec | None = None
-    settle_s: float = 8.0            # where the "expected result" snapshot is taken
+    settle_s: float = 8.0            # where the "result" (after the action) snapshot is taken
 
 
 class RelativeHeadingSpec(BaseModel):
@@ -87,16 +88,29 @@ class RelativeHeadingSpec(BaseModel):
     anchor_window_s: float = 5.0
 
 
+class TrackFrameSpec(BaseModel):
+    """Position as ground track in a frame anchored where `anchor` first becomes true
+    (e.g. the take-off roll): `along` the anchor heading and `offset` across it
+    (absolute distance; `side` is signed, + = right). Uses lat/lon if given, else x/y in m."""
+
+    along: str
+    offset: str
+    side: str | None = None
+    anchor: str
+    heading_signal: str
+    lat: str | None = None
+    lon: str | None = None
+    x: str | None = None
+    y: str | None = None
+    unit: Literal["nm", "m"] = "nm"
+    anchor_window_s: float = 5.0
+
+
 class DerivedSpec(BaseModel):
     """Derived signals computed after the adapter, before segmentation."""
 
     relative_heading: list[RelativeHeadingSpec] = Field(default_factory=list)
-
-
-class LimitSpec(BaseModel):
-    when: str                        # pandas expression true = violation
-    message: str
-    reference: str | None = None
+    track_frame: list[TrackFrameSpec] = Field(default_factory=list)
 
 
 class Profile(BaseModel):
@@ -106,7 +120,7 @@ class Profile(BaseModel):
     adapter: str
     sample_hz: float = 5.0
     signals: dict[str, SignalSpec]
-    context: list[str]               # signals snapshotted as trigger / expected result
+    context: list[str]               # signals snapshotted at the trigger and the result
     trigger_signals: list[str] = Field(default_factory=list)   # default: first two of context
     result_signals: list[str] = Field(default_factory=list)
     derived: DerivedSpec = Field(default_factory=DerivedSpec)
@@ -115,8 +129,10 @@ class Profile(BaseModel):
     events: EventsSpec = Field(default_factory=EventsSpec)
     annotation_window_s: float = 10.0
     annotation_keywords: dict[str, list[str]] = Field(default_factory=dict)
-    limits: list[LimitSpec] = Field(default_factory=list)
-    references: str                  # sub-folder of references/
+    # Update mode: a phase counts as a technique change when at least this many runs from a
+    # new environment all fall outside the current typical range, on the same side.
+    change_min_runs: int = 3
+    references: str                  # sub-folder of references/ holding sample reference docs
     style: str = ""                  # writing guidance for the LLM
 
     @model_validator(mode="after")
@@ -135,6 +151,10 @@ class Profile(BaseModel):
     def result_for(self, phase: str) -> list[str]:
         spec = self.phase_spec(phase)
         return spec.result_signals if spec and spec.result_signals else self.result_signals
+
+    def stated_facts(self, phase: str) -> list[str]:
+        """Facts a guideline in this phase states: the action value, trigger and result."""
+        return ["action"] + [f"trigger.{s}" for s in self.trigger_for(phase)]             + [f"result.{s}" for s in self.result_for(phase)]
 
     def unit(self, signal: str) -> str | None:
         spec = self.signals.get(signal)

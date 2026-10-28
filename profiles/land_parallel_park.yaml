@@ -60,6 +60,3 @@ annotation_keywords:
   stop: [brake, hand_brake]
   handbrake: [hand_brake]
 
-limits:
-  - when: "speed_kmh < -6"
-    message: "Reversing faster than walking pace"

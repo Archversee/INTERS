@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ doc.title }} — Guidelines v{{ doc.version }}</title>
+<style>
+  :root { --ink:#1b1f24; --muted:#5b6470; --line:#d9dee4; --accent:#1f5fae; --ok:#1e7a46; --warn:#a15c00; --bad:#b42318; --bg:#ffffff; --card:#f7f9fb; --limit:#fdf3f2; }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); margin: 0 auto; max-width: 980px; padding: 24px 16px 64px; }
+  header { border-bottom: 2px solid var(--ink); padding-bottom: 12px; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .meta { color: var(--muted); font-size: 12px; }
+  .banner { margin: 10px 0 0; padding: 8px 12px; border-radius: 6px; font-size: 13px; border: 1px solid var(--line); background: var(--card); }
+  .banner.unchecked { border-color: var(--bad); background: #fff4f2; color: var(--bad); font-weight: 600; }
+  .banner.checked { border-color: var(--ok); color: var(--ok); }
+  .metrics { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+  .metric { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+  .metric b { display: block; font-size: 16px; }
+  .metric span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  h2 { font-size: 16px; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 28px; }
+  .step { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 6px; padding: 10px 12px; margin: 10px 0; page-break-inside: avoid; }
+  .step.technique { border-left-color: var(--warn); background: #fffaf2; }
+  .step.changed { box-shadow: inset 0 0 0 1px var(--warn); }
+  .step-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .action { font-weight: 600; font-size: 15px; }
+  .badge { font-size: 11px; border-radius: 10px; padding: 1px 7px; border: 1px solid var(--line); margin-left: 4px; color: var(--muted); white-space: nowrap; }
+  .badge.ok { color: var(--ok); border-color: var(--ok); }
+  .badge.bad { color: var(--bad); border-color: var(--bad); }
+  .badge.warn { color: var(--warn); border-color: var(--warn); }
+  dl { display: grid; grid-template-columns: 110px 1fr; gap: 2px 10px; margin: 8px 0 0; }
+  dt { color: var(--muted); font-size: 12px; }
+  dd { margin: 0; }
+  dd.limit { background: var(--limit); border-radius: 4px; padding: 1px 6px; }
+  .ref { font-size: 12px; color: var(--muted); }
+  .notes, .flags, .reasons { font-size: 12px; margin: 6px 0 0; padding-left: 18px; }
+  .flags li { color: var(--bad); }
+  .reasons li { color: var(--warn); }
+  .global-flags li { margin: 2px 0; }
+  .removed { color: var(--muted); text-decoration: line-through; }
+  footer { margin-top: 32px; color: var(--muted); font-size: 11px; }
+  @media (max-width: 560px) { dl { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>{{ doc.title }} — Guidelines</h1>
+  <div class="meta">v{{ doc.version }}{% if doc.parent_version %} (from v{{ doc.parent_version }}){% endif %} · {{ doc.mode }} · <b>{{ doc.status|upper }}</b>{% if doc.pending %} ({{ doc.pending|length }} change{{ "s" if doc.pending|length != 1 }} awaiting approval){% endif %} · {{ doc.created.strftime("%Y-%m-%d %H:%M UTC") }} · {{ doc.runs|length }} run{{ "s" if doc.runs|length != 1 }}{% if doc.environment %} · environment: {{ doc.environment }}{% endif %} · writer: {{ doc.writer }}</div>
+  <div class="banner">ADVISORY. These guidelines show how instructors typically fly the procedure. Where a guideline and a reference SOP differ, the SOP wins.</div>
+  {% if doc.checked %}
+  <div class="banner checked">LIMIT-CHECKED against: {{ doc.references|join("; ") }}</div>
+  {% else %}
+  <div class="banner unchecked">UNCHECKED — built from flight data only. No reference SOPs were supplied, so no hard limits were applied.</div>
+  {% endif %}
+  <div class="metrics">
+    <div class="metric"><b>{{ "%.0f"|format(doc.metrics.get("verifier_pass_rate", 0) * 100) }}%</b><span>verified</span></div>
+    {% if doc.checked %}<div class="metric"><b>{{ "%.0f"|format(doc.metrics.get("within_limits", 0) * 100) }}%</b><span>within limits</span></div>{% endif %}
+    <div class="metric"><b>{{ "%.2f"|format(doc.metrics.get("range_width_ratio", 1)) }}</b><span>range width vs default</span></div>
+    <div class="metric"><b>{{ "%.2f"|format(doc.metrics.get("mean_confidence", 0)) }}</b><span>mean confidence</span></div>
+    <div class="metric"><b>{{ doc.metrics.get("core_steps", 0)|int }} / {{ doc.metrics.get("technique_steps", 0)|int }}</b><span>core / technique</span></div>
+    {% if doc.parent_version %}<div class="metric"><b>{{ doc.metrics.get("steps_changed", 0)|int }}</b><span>changed</span></div>{% endif %}
+  </div>
+</header>
+
+{% for phase in doc.phases %}{% set steps = doc.steps_in(phase) %}{% if steps %}
+<h2>{{ phase }}</h2>
+{% for s in steps %}
+<div class="step{% if not s.mandatory %} technique{% endif %}{% if s.change %} changed{% endif %}" id="{{ s.id }}">
+  <div class="step-head">
+    <div class="action">{{ s.action }}</div>
+    <div>
+      {% if s.required_by %}<span class="badge ok">required</span>{% elif not s.mandatory %}<span class="badge warn">technique {{ s.seen_in }}/{{ s.run_count }}</span>{% endif %}
+      {% if s.change %}<span class="badge warn">{{ s.change }}</span>{% endif %}
+      {% if s.review %}<span class="badge {{ 'ok' if s.review == 'approved' else 'bad' if s.review == 'rejected' else 'warn' }}">{{ s.review }}</span>{% endif %}
+      <span class="badge">conf {{ "%.2f"|format(s.confidence) }}</span>
+      {% if s.verified %}<span class="badge ok">verified</span>{% else %}<span class="badge bad">unverified</span>{% endif %}
+      {% if s.edited %}<span class="badge">edited</span>{% endif %}
+    </div>
+  </div>
+  <dl>
+    {% if s.trigger %}<dt>When</dt><dd>{{ s.trigger }}</dd>{% endif %}
+    {% if s.intent %}<dt>Why</dt><dd>{{ s.intent }}</dd>{% endif %}
+    {% if s.typical %}<dt>Typical range</dt><dd>{{ s.typical }}</dd>{% endif %}
+    <dt>Hard limit</dt>
+    {% if s.limit %}<dd class="limit">{{ s.limit }}</dd>
+    {% elif doc.checked %}<dd class="ref">None in the reference SOPs for this step.</dd>
+    {% else %}<dd class="ref">Unchecked — no reference SOPs supplied.</dd>{% endif %}
+    {% if s.required_by %}<dt>Required by</dt><dd class="ref">{{ s.required_by }}</dd>{% endif %}
+    {% if s.reference %}<dt>Reference</dt><dd class="ref">{{ s.reference.doc }}{% if s.reference.section %} — {{ s.reference.section }}{% endif %}</dd>{% endif %}
+  </dl>
+  {% if s.change_reasons %}<ul class="reasons">{% for r in s.change_reasons %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+  {% if s.technique_notes %}<ul class="notes">{% for n in s.technique_notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+  {% if s.flags %}<ul class="flags">{% for f in s.flags %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+</div>
+{% endfor %}{% endif %}{% endfor %}
+
+{% if doc.removed %}
+<h2>Removed in this version</h2>
+<ul>{% for s in doc.removed %}<li class="removed">[{{ s.phase }}] {{ s.action or s.label }}</li> <span class="ref">{{ s.change_reasons|join("; ") }}</span>{% endfor %}</ul>
+{% endif %}
+
+{% set violations = doc.flags|selectattr("kind", "in", ["limit_violation", "excluded", "clipped"])|list %}
+{% if violations %}
+<h2>Limit-violation report</h2>
+<p class="ref">Instructor runs that break a reference limit. Their values are kept out of the typical ranges; a value is clipped only when no compliant run exists.</p>
+<ul class="global-flags">{% for f in violations %}<li><b>{{ f.kind }}</b>: {{ f.message }}</li>{% endfor %}</ul>
+{% endif %}
+
+{% set others = doc.flags|rejectattr("kind", "in", ["limit_violation", "excluded", "clipped"])|list %}
+{% if others %}
+<h2>Review flags</h2>
+<ul class="global-flags">{% for f in others %}<li><b>{{ f.kind }}</b>{% if f.run_id %} [{{ f.run_id }}]{% endif %}: {{ f.message }}</li>{% endfor %}</ul>
+{% endif %}
+
+<footer>Generated by Sim-to-SOP from simulator telemetry. Advisory guidelines, not an SOP: every number is checked against recorded data{% if doc.checked %} and the reference hard limits{% endif %}. Typical ranges come from {{ doc.runs|length }} run{{ "s" if doc.runs|length != 1 }}. Not a certified document.</footer>
+</body>
+</html>

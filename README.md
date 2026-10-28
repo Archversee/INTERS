@@ -1,13 +1,19 @@
 # INTERS: Sim-to-SOP
 
-Sim-to-SOP turns an instructor's simulator run into a verified, step-by-step SOP (standard operating procedure).
+Sim-to-SOP turns instructor simulator runs into practical, step-by-step **guidelines** for students. Reference SOPs set the hard limits.
 
-> Fly it once, get the manual. Fly it five times, get the standard.
+> The SOP says what's allowed. The guidelines show how the best instructors do it.
 
-The LLM never sees raw telemetry. Deterministic signal processing turns each run into an
-event timeline. A planner → writer → verifier graph writes the steps, and the verifier
-checks every number against the data. Multi-run consensus and correction memory make
-each new version better than the last.
+The guidelines are **advisory**: what to do, when, why, and the range instructors typically use.
+The existing SOPs, the POH, regulations and NOTAMs are read-only **reference SOPs**:
+- Every guideline is checked against them.
+- A value past a limit is clipped to the limit and flagged.
+- Where a guideline and an SOP differ, the SOP wins.
+- The system never writes or edits an SOP.
+
+The LLM never sees raw telemetry. Deterministic signal processing builds an event
+timeline. A planner → writer → verifier graph writes each guideline, and the verifier
+checks every number against the telemetry and the reference limits.
 
 ## Quick start
 
@@ -16,91 +22,132 @@ python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -e ".[app,dev]"
 
-sim2sop demo --provider none      # full air demo, no LLM needed
+sim2sop demo --provider none      # the demo script below, no LLM needed
 streamlit run app/streamlit_app.py
 uvicorn sim2sop.api:app --reload  # REST API at http://localhost:8000/docs
 pytest
 ```
 
-`sim2sop demo` generates 5 C172 circuits and builds four SOP versions:
+## Demo script (`sim2sop demo`)
 
-| Version | What happens | What it shows |
+| Step | Version | What it shows |
 |---|---|---|
-| v1 | 1 run | Every step cited and verified; default tolerance bands |
-| v2 | 5 runs | DTW consensus: bands about 2× tighter, confidence up, short-final power correction becomes a technique note (2/5 runs) |
-| v3 | Instructor edits the Flaps 10° step | Edit stored as a before/after diff and re-verified |
-| v4 | Regenerate | The correction is reused on Flaps 20° / 30° / UP, each with its own verified numbers |
+| 1. Create, data only | v1 | 1 run → guidelines marked **UNCHECKED** |
+| 2. Add reference SOPs | v2 | C172 POH + aerodrome SOP: each guideline shows its hard limit. Run 1 selects flaps 20 at 89 kt; the value is **clipped to Vfe 85 kt** and flagged |
+| 3. More runs | v3 | 5 runs: typical ranges about 2× tighter, short-final power correction becomes a technique note, the overspeed run is **excluded** from the flaps-20 range |
+| 4. Update | v4 | NOTAM + 3 runs flown around a new crane: technique change detected; **only the downwind and base guidelines change** (5 steps), each with reasons citing the NOTAM |
+| 5. Instructor edit | v5, v6 | Edit the Flaps 10° guideline; the next update applies the same wording to Flaps 20° and 30° |
+| 6. Other domains | | Land and sea adapters and profiles exist; their generators are still TODO |
 
-The HTML output for each version is written to `data/sops/<procedure>/v<N>.html`.
+Each version is written to `data/guidelines/<procedure>/v<N>.html`. Every step in the demo is auto-approved; in real use the instructor approves or rejects each change.
+
+## Two modes
+
+| | Create (`sim2sop create`) | Update (`sim2sop update`) |
+|---|---|---|
+| Input | Flight data (+ optional reference SOPs) | Existing guidelines + new runs and/or revised references |
+| Output | v1, *limit-checked* or *unchecked* | New version with a step-level diff and the reason for each change |
+| What changes | Everything | Only affected phases and steps |
+| Approval | `sim2sop approve` publishes | Each changed step is approved or rejected (`--reject s12`), and a rejected step reverts to the previous version |
+
+How update decides what changed:
+- **New runs from the same environment:** every phase learns from them. Only steps whose numbers moved are rewritten.
+- **Runs tagged with a new environment** (`--env new-obstacle`, or `environment` in `meta.json`):
+  - If at least 3 runs all fall outside a current typical range on the same side, by more than the signal's tolerance, that phase is a **technique change**. Its consensus is rebuilt from the post-change runs only, and other phases are untouched.
+  - With fewer runs, the difference is flagged and held back from learning.
+- **A revised SOP, POH or NOTAM** (same `id`, new `revision`): every step is re-checked, and the steps whose limits changed are re-cited.
+- **New instructor corrections:** matching steps are rewritten in the corrected style.
+
+## Reference SOPs and hard limits
+
+```bash
+sim2sop add-reference air_c172_circuit references/air/c172_poh_notes.md references/air/aerodrome_sop_notes.md
+sim2sop references air_c172_circuit
+```
+
+Documents are copied into `data/references/<procedure>/` and never modified. Limits and required actions go in the document's YAML front matter; for a PDF, put the same YAML in a `<name>.limits.yaml` file next to it:
+
+```yaml
+---
+id: c172_poh          # stable across revisions; a new revision supersedes the old one
+title: C172 POH
+kind: poh             # sop | poh | notam | regulation | handbook | other
+revision: "A"
+environment: new-obstacle    # optional (NOTAMs): violations are only reported for runs tagged with it
+limits:
+  - {id: vfe_full, signal: ias_kt, max: 85, when: "flaps_idx >= 2", text: "Max 85 KIAS with flaps beyond 10° (Vfe)"}
+  - {id: crane, signal: track_offset_nm, min: 1.5, phases: [downwind], at: result, text: "..."}
+requirements:          # actions an SOP makes mandatory: always core guidelines
+  - {id: landing_light, key: "toggle:light_landing:1", text: "Landing light on for take-off"}
+---
+```
+
+How limits are applied:
+- `when` is evaluated on the state *after* the step's own action. Selecting flaps 20 falls under the flaps-20 Vfe.
+- `at` chooses whether the limit bounds the trigger, the result or both.
+- Run values that break a limit are excluded from that step's typical range. If no compliant run remains, the value is clipped and flagged.
+- The limit-violation report lists every breach found in the full telemetry.
+
+## Guideline template
+
+**When** (trigger) → **what to do** → **why** (the instructor's callout) → **typical range** (median and robust spread across runs) → **hard limit** (quoted from the reference, with its citation).
+
+Typical ranges use the median ± a blend of the profile tolerance and 2σ, where σ comes from the IQR (or the MAD for fewer than 4 runs). One bad run cannot widen a range, and ranges are capped at the limits. Hard-limit text is always quoted from the reference: the LLM never writes it, and instructors cannot edit it.
 
 ## LLM: Ollama or an API key
 
-Set the provider in `.env` (copy `.env.example`) or with environment variables. You can also override it per command with `--provider/--model`.
+Set the provider in `.env` (copy `.env.example`) or override it per command with `--provider/--model`.
 
 | `SIM2SOP_LLM_PROVIDER` | Needs | Notes |
 |---|---|---|
 | `ollama` (default) | `ollama pull qwen2.5:7b-instruct` | Fully offline |
-| `openai` | `SIM2SOP_API_KEY`, optional `SIM2SOP_LLM_BASE_URL` | Any OpenAI-compatible endpoint: OpenAI, OpenRouter, Groq, vLLM, LM Studio |
+| `openai` | `SIM2SOP_API_KEY`, optional `SIM2SOP_LLM_BASE_URL` | Any OpenAI-compatible endpoint |
 | `anthropic` | `SIM2SOP_API_KEY` | Claude Messages API |
 | `none` | nothing | Deterministic template writer |
 
-If the provider is unreachable, the pipeline falls back to the template writer, so a demo
-never dies on stage. Run `sim2sop llm-check` to test the connection. All providers go
-through one interface in [src/sim2sop/agent/llm.py](src/sim2sop/agent/llm.py); to add one, subclass `LLMClient`.
+If the provider is unreachable, the pipeline falls back to the template writer. Run `sim2sop llm-check` to test the connection.
 
-## Pipeline
-
-```
-raw sim files ─ adapter ─> common schema ─> resample + derived signals
-   ─> phase segmentation (profile rules + ruptures change points)
-   ─> event extraction (toggles, thresholds, control inputs, turns)
-   ─> annotation matching (callout → nearest event; unmatched → flag)
-   ─> compliance limits ─> run library (Parquet + DuckDB)
-   ─> consensus (DTW across runs → mandatory / technique, tolerance bands, confidence)
-   ─> planner → writer (LLM or template, + RAG citation, + correction memory) → verifier ⟲
-   ─> versioned SOP (JSON + HTML/PDF)
-```
+## Code map
 
 | Path | What it is |
 |---|---|
-| [profiles/](profiles/) | One YAML per procedure: signals, phases, events, keywords, limits. **New domain = new file** |
-| [src/sim2sop/adapters/](src/sim2sop/adapters/) | MSFS SimConnect, CARLA, NMEA 0183, generic CSV with column mapping |
-| [src/sim2sop/generate/](src/sim2sop/generate/) | Synthetic runs in each sim's native format (air done) |
-| [src/sim2sop/signals/](src/sim2sop/signals/) | Phases, events, annotation matching, compliance |
-| [src/sim2sop/learn/](src/sim2sop/learn/) | DTW consensus, tolerance bands, correction memory |
+| [profiles/](profiles/) | One YAML per procedure: signals (incl. ground track), phases, events, keywords. **New domain = new file** |
+| [references/](references/) | Sample reference SOPs per domain (**placeholders**, not real POH text) |
+| [src/sim2sop/adapters/](src/sim2sop/adapters/) | MSFS SimConnect, CARLA, NMEA 0183, generic CSV |
+| [src/sim2sop/generate/](src/sim2sop/generate/) | Synthetic runs in each sim's format (air: baseline + new-obstacle scenario) |
+| [src/sim2sop/signals/](src/sim2sop/signals/) | Phases, events, annotation matching, limit-violation report |
+| [src/sim2sop/references.py](src/sim2sop/references.py) | Read-only reference library: limits, requirements, revisions |
+| [src/sim2sop/learn/](src/sim2sop/learn/) | DTW consensus and typical ranges, hard limits, change detection, correction memory |
 | [src/sim2sop/agent/](src/sim2sop/agent/) | LLM clients, planner, writer, verifier, LangGraph graph |
-| [src/sim2sop/rag/](src/sim2sop/rag/) | Reference retrieval (TF-IDF, or Ollama `nomic-embed-text`) |
-| [references/](references/) | Reference docs per domain (`.md` with `##` sections, `.txt`, `.pdf`) |
-| [src/sim2sop/render/](src/sim2sop/render/) | HTML template, PDF via WeasyPrint (`pip install -e ".[pdf]"`) |
-| [app/streamlit_app.py](app/streamlit_app.py) | SOP viewer, instructor edits, metrics, version diff, run explorer |
+| [src/sim2sop/pipeline.py](src/sim2sop/pipeline.py) | create / update / approve / edit, and the reason for each change |
+| [src/sim2sop/guidelines_store.py](src/sim2sop/guidelines_store.py) | Versions and step-level diff |
+| [app/streamlit_app.py](app/streamlit_app.py) | Viewer, review pane, references, metrics, diff, run explorer |
 
 ## CLI
 
 ```bash
-sim2sop generate-data air -n 5
-sim2sop ingest air_c172_circuit data/raw/air          # a run folder, or a folder of runs
-sim2sop build air_c172_circuit [--provider anthropic] [--full]
-sim2sop show air_c172_circuit [--version 2]
+sim2sop generate-data air -n 5                     # baseline runs
+sim2sop generate-data air -n 3 --scenario obstacle # runs around the new obstacle
+sim2sop ingest air_c172_circuit data/raw/air [--env new-obstacle]
+sim2sop add-reference air_c172_circuit <file>...
+sim2sop create air_c172_circuit [--provider anthropic]
+sim2sop update air_c172_circuit
+sim2sop approve air_c172_circuit [--steps s12 s13] [--reject s14]
 sim2sop edit air_c172_circuit s14 action "Select Flaps 10°, then check the indicator."
-sim2sop diff air_c172_circuit 2 4
-sim2sop export air_c172_circuit --pdf
-sim2sop transcribe callouts.wav data/raw/air/<run> --offset 0   # needs .[voice]
-sim2sop reset air_c172_circuit --memory
+sim2sop show | diff A B | export [--pdf] | references | reset [--references --memory]
 ```
 
 ## Status and team to-dos
 
-Done and tested (air): generator, MSFS adapter, schema, phases, events, annotation matching,
-compliance flags, consensus and bands, correction memory, RAG, verifier loop, versioning,
-HTML render, CLI, API and UI.
+Done and tested (air): the generator with the overspeed and obstacle scenarios, MSFS adapter, ground track, phases, events, annotation matching, reference library and limits, consensus with typical ranges, change detection, update with reasons, approval, correction memory, RAG, verifier loop, HTML, CLI, API and UI.
 
-- **Data:** land (CARLA) and sea (NMEA) generators. The adapters and profiles exist but no data has been run through them yet, and their thresholds are guesses. Confirm MSFS pitch/bank sign conventions against a real capture.
-- **AI:** pre-test Qwen 2.5 7B vs Llama 3.1 8B on the writer prompt. The reference notes in `references/air/` are **placeholders**: replace them with real POH / FAA AFH extracts. Optionally move to LanceDB.
-- **Learning:** student grading mode and a "Common mistakes" section (stretch).
-- **Product:** per-step chart in the HTML, checklist cards, PDF on the demo machine (WeasyPrint needs GTK on Windows).
+- **Data:** land (CARLA) and sea (NMEA) generators. Their adapters and profiles exist but are untested, and the land and sea folders have no reference SOPs yet. Confirm MSFS sign conventions against a real capture.
+- **AI:** pre-test Qwen 2.5 7B vs Llama 3.1 8B. Replace the placeholder references with real POH and aerodrome SOP extracts. Optionally extract limits from PDFs with the LLM, with instructor confirmation.
+- **Learning:** student grading and a "Common mistakes" section (stretch).
+- **Product:** per-step charts in the HTML (the UI already has them), quick-reference cards, PDF on the demo machine.
 
 ## Limitations (say these in the pitch)
 
 - All runs are generated, not recorded from real instructors. Adapters accept real recordings in the same format unchanged.
 - "Learning" means memory, retrieval and consensus. No model weights are trained.
-- The output is not a certified document.
+- The guidelines are advisory and not certified. The reference SOPs remain the authority.

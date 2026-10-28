@@ -2,41 +2,41 @@
 
     plan ──> write ──> verify ──┬──> write   (steps that failed, with the verifier's feedback)
                                 └──> END     (all pass, or MAX_VERIFY_ROUNDS reached: flag the rest)
+
+The verifier checks every number against telemetry and the reference hard limits.
 """
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any, Callable, TypedDict
 
 from langgraph.graph import END, StateGraph
 
 from sim2sop import config
-from sim2sop.agent.planner import plan
+from sim2sop.agent.planner import PlanResult
 from sim2sop.agent.verifier import verify_step
 from sim2sop.profiles import Profile
-from sim2sop.rag.index import ReferenceIndex
-from sim2sop.schema import SOP, Flag, Step
-from sim2sop.storage import RunRecord
+from sim2sop.schema import Flag, Step
 
 
 class GraphState(TypedDict, total=False):
-    runs: list[RunRecord]
-    previous: SOP | None
     steps: list[Step]
     pending: list[str]                  # step ids to (re)write
     feedback: dict[str, list[str]]      # step id -> verifier errors from the last round
     round: int
     flags: list[Flag]
-    anchor_run: str
+    anchor_run: str | None
 
 
-def build_graph(profile: Profile, refs: ReferenceIndex, writer: Any, max_rounds: int | None = None):
+def build_graph(profile: Profile, writer: Any, planner: Callable[[], PlanResult],
+                max_rounds: int | None = None):
+    """`planner` runs the planner with the run sets / limits chosen by the caller."""
     max_rounds = config.MAX_VERIFY_ROUNDS if max_rounds is None else max_rounds
 
     def plan_node(state: GraphState) -> GraphState:
-        steps, dirty, flags, anchor = plan(state["runs"], profile, refs, state.get("previous"))
-        return {"steps": steps, "pending": dirty, "feedback": {}, "round": 0,
-                "flags": flags, "anchor_run": anchor.run_id}
+        result = planner()
+        return {"steps": result.steps, "pending": result.dirty, "feedback": {}, "round": 0,
+                "flags": result.flags, "anchor_run": result.anchor_run}
 
     def write_node(state: GraphState) -> GraphState:
         by_id = {s.id: s for s in state["steps"]}
@@ -75,7 +75,7 @@ def build_graph(profile: Profile, refs: ReferenceIndex, writer: Any, max_rounds:
     g.add_node("write", write_node)
     g.add_node("verify", verify_node)
     g.set_entry_point("plan")
-    g.add_conditional_edges("plan", lambda s: "write" if s["pending"] else END, {"write": "write", END: END})
+    g.add_conditional_edges("plan", route, {"write": "write", END: END})
     g.add_edge("write", "verify")
     g.add_conditional_edges("verify", route, {"write": "write", END: END})
     return g.compile()

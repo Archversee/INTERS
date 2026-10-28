@@ -58,7 +58,34 @@ def add_derived(df: pd.DataFrame, profile: Profile) -> pd.DataFrame:
             ref = _circular_mean(window.to_numpy())
         df[spec.name] = wrap180(df[spec.signal] - ref)
         df.attrs[f"{spec.name}_ref"] = ref
+    for spec in profile.derived.track_frame:
+        _add_track_frame(df, spec)
     return df
+
+
+def _add_track_frame(df: pd.DataFrame, spec) -> None:
+    if spec.lat and spec.lat in df:
+        lat0 = np.radians(df[spec.lat].iloc[0])
+        north = np.radians(df[spec.lat] - df[spec.lat].iloc[0]) * 6_371_000.0
+        east = np.radians(df[spec.lon] - df[spec.lon].iloc[0]) * 6_371_000.0 * np.cos(lat0)
+    elif spec.x and spec.x in df:
+        east, north = df[spec.x] - df[spec.x].iloc[0], df[spec.y] - df[spec.y].iloc[0]
+    else:
+        return
+    east, north = np.asarray(east, dtype=float), np.asarray(north, dtype=float)
+    mask = df.eval(spec.anchor).to_numpy(dtype=bool)
+    i0 = int(np.argmax(mask)) if mask.any() else 0
+    t0 = df["t"].iloc[i0]
+    window = df[(df["t"] >= t0) & (df["t"] <= t0 + spec.anchor_window_s)][spec.heading_signal]
+    h = np.radians(_circular_mean(window.to_numpy()))
+    dx, dy = east - east[i0], north - north[i0]
+    scale = 1852.0 if spec.unit == "nm" else 1.0
+    along = (dx * np.sin(h) + dy * np.cos(h)) / scale
+    side = (dx * np.cos(h) - dy * np.sin(h)) / scale   # + = right of the anchor heading
+    df[spec.along] = along
+    df[spec.offset] = np.abs(side)
+    if spec.side:
+        df[spec.side] = side
 
 
 def heading_rate(df: pd.DataFrame, signal: str, smooth_s: float, hz: float) -> np.ndarray:

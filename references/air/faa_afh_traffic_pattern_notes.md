@@ -1,3 +1,9 @@
+---
+id: faa_afh
+title: FAA Airplane Flying Handbook (placeholder notes)
+kind: handbook
+revision: "FAA-H-8083-3C"
+---
 # FAA Airplane Flying Handbook (placeholder notes)
 
 > PLACEHOLDER. Paraphrased summary for development only. Replace with extracts from the

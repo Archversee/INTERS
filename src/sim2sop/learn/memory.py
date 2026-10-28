@@ -77,7 +77,8 @@ def relevant_count(domain: str, step_kind: str, step_signal: str) -> int:
 
 def to_pattern(text: str, facts: dict[str, Fact], label: str | None = None,
                intent: str | None = None) -> str:
-    """Turn corrected text into a reusable pattern: {label}, {intent}, {fact:<name>}."""
+    """Turn corrected text into a reusable pattern: {label}, {intent}, {fact:<name>} for a
+    typical value and {fact:<name>.lo} / {fact:<name>.hi} for the ends of its range."""
     pattern = text
     if label and label in pattern:
         pattern = pattern.replace(label, "{label}")
@@ -87,8 +88,9 @@ def to_pattern(text: str, facts: dict[str, Fact], label: str | None = None,
     def repl(m: re.Match) -> str:
         x = float(m.group())
         for name, f in facts.items():
-            if number_matches(x, f):
-                return "{fact:" + name + "}"
+            part = matching_part(x, f)
+            if part:
+                return "{fact:" + name + ("" if part == "value" else "." + part) + "}"
         return m.group()
 
     # Leave numbers inside the {label} / {intent} placeholders alone.
@@ -110,19 +112,35 @@ def fill_pattern(pattern: str, facts: dict[str, Fact], label: str, intent: str |
                 missing = True
             return intent or ""
         if token.startswith("fact:"):
-            f = facts.get(token[5:])
+            name, _, part = token[5:].partition(".")
+            if name in ("trigger", "result"):  # names contain a dot: trigger.ias_kt[.lo]
+                sig, _, part = part.partition(".")
+                name = f"{name}.{sig}"
+            f = facts.get(name)
             if f is None:
                 missing = True
                 return ""
-            return f"{f.value:.{f.decimals}f}"
+            v = {"lo": f.lo, "hi": f.hi}.get(part, f.value)
+            return f"{(f.value if v is None else v):.{f.decimals}f}"
         return m.group(0)
 
     out = re.sub(r"\{([^}]*)\}", repl, pattern)
     return None if missing else out
 
 
+def matching_part(x: float, f: Fact) -> str | None:
+    """Which number of a fact a stated number is: the typical value, or the low / high end
+    of its range, up to sensible rounding (display precision or 3 %). Sign is ignored so
+    "descend at 400 fpm" matches -400."""
+    best, best_d = None, float("inf")
+    for part, v in (("value", f.value), ("lo", f.lo), ("hi", f.hi)):
+        if v is None:
+            continue
+        d = abs(abs(x) - abs(v))
+        if d <= max(0.5 * 10 ** (-f.decimals), 0.03 * abs(v)) and d < best_d:
+            best, best_d = part, d
+    return best
+
+
 def number_matches(x: float, f: Fact) -> bool:
-    """A stated number matches a fact if it equals the value up to sensible rounding:
-    display precision, 3 % of the value, or a quarter of the tolerance band."""
-    slack = max(0.5 * 10 ** (-f.decimals), 0.03 * abs(f.value), 0.25 * (f.tol or 0.0))
-    return abs(abs(x) - abs(f.value)) <= slack
+    return matching_part(x, f) is not None

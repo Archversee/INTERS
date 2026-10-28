@@ -6,10 +6,12 @@ Matching event keys cost nothing, matching intent annotations act as anchor poin
 
 - an event matched in every run is mandatory;
 - an event seen in only some runs becomes a technique note;
-- numeric values become tolerance bands (mean ± band) that narrow as runs are added.
+- numeric values become typical ranges: median ± a robust spread that tightens (or
+  widens) as runs are added. Hard limits are applied afterwards (sim2sop.learn.limits).
 
-Band width blends the profile's default tolerance (a prior worth one run) with 2σ of
-the observed values: band = (d + (n-1)·2σ) / n, floored at 20 % of d.
+Half-width blends the profile's default tolerance d (a prior worth one run) with 2σ,
+where σ is robust (IQR / 1.349 from 4 runs, MAD otherwise), so one bad run cannot
+widen a range on its own: half = (d + (n-1)·2σ) / n, floored at 20 % of d.
 """
 
 from __future__ import annotations
@@ -156,39 +158,49 @@ def build_consensus(runs: list[RunRecord]) -> tuple[list[ConsensusItem], RunReco
     return all_items, anchor
 
 
-# --- tolerance bands ------------------------------------------------------------------------
+# --- typical ranges -------------------------------------------------------------------------
 
-def band(values: list[float], default_tol: float | None, angle: bool = False) -> tuple[float, float]:
-    """Return (centre, ± band) for the values seen across runs."""
+def typical_range(values: list[float], default_tol: float | None,
+                  angle: bool = False) -> tuple[float, float, float]:
+    """Return (median, lo, hi) of the values seen across runs."""
     x = np.asarray(values, dtype=float)
+    n = len(x)
     if angle:
         r = np.radians(x)
         centre = float(np.degrees(np.arctan2(np.sin(r).mean(), np.cos(r).mean())) % 360.0)
-        spread = np.degrees(np.sqrt(-2 * np.log(max(np.hypot(np.sin(r).mean(), np.cos(r).mean()), 1e-9))))
+        dev = np.abs((x - centre + 180.0) % 360.0 - 180.0)
+        sigma = float(np.median(dev) * 1.4826) if n > 1 else 0.0
     else:
-        centre, spread = float(x.mean()), float(x.std(ddof=1)) if len(x) > 1 else 0.0
-    n = len(x)
+        centre = float(np.median(x))
+        if n >= 4:
+            q1, q3 = np.percentile(x, [25, 75])
+            sigma = float(q3 - q1) / 1.349
+        elif n > 1:
+            sigma = float(np.median(np.abs(x - centre)) * 1.4826)
+        else:
+            sigma = 0.0
     if default_tol is None:
-        return centre, float(2 * spread)
-    blended = (default_tol + (n - 1) * 2 * spread) / n
-    return centre, float(max(blended, 0.2 * default_tol))
+        half = 2 * sigma
+    else:
+        half = max((default_tol + (n - 1) * 2 * sigma) / n, 0.2 * default_tol)
+    return centre, centre - half, centre + half
 
 
-def item_facts(item: ConsensusItem, profile: Profile) -> dict[str, Fact]:
-    """The numbers a step may state: action value, plus every context signal at the
-    trigger and after settling. The template writer states a subset; the verifier
-    accepts any of them."""
+def item_facts(item: ConsensusItem, profile: Profile, exclude: set[str] = frozenset()) -> dict[str, Fact]:
+    """The numbers a guideline may state: the action value, plus every context signal at
+    the trigger and after settling. The template writer states a subset; the verifier
+    accepts any of them. Events from runs in `exclude` are left out."""
     facts: dict[str, Fact] = {}
-    evs = list(item.events.values())
+    evs = [e for r, e in item.events.items() if r not in exclude]
 
     def add(name: str, signal: str, values: list[float | None]):
         values = [v for v in values if v is not None and np.isfinite(v)]
         if not values:
             return
         spec = profile.signals.get(signal)
-        centre, tol = band(values, spec.tolerance if spec else None, bool(spec and spec.angle))
-        facts[name] = Fact(signal=signal, value=centre, unit=spec.unit if spec else None,
-                           tol=tol, n=len(values), decimals=spec.decimals if spec else 0)
+        centre, lo, hi = typical_range(values, spec.tolerance if spec else None, bool(spec and spec.angle))
+        facts[name] = Fact(signal=signal, value=centre, lo=lo, hi=hi, unit=spec.unit if spec else None,
+                           n=len(values), decimals=spec.decimals if spec else 0)
 
     if item.kind in ("control", "turn", "threshold"):
         add("action", item.signal, [e.after for e in evs])
@@ -198,14 +210,16 @@ def item_facts(item: ConsensusItem, profile: Profile) -> dict[str, Fact]:
     return facts
 
 
-def confidence(item: ConsensusItem, facts: dict[str, Fact], profile: Profile) -> float:
-    """Presence across runs x how many runs back it x how tight the bands are."""
-    presence = item.seen_in / item.run_count
-    support = item.seen_in / (item.seen_in + 1)
+def confidence(seen_in: int, run_count: int, facts: dict[str, Fact], profile: Profile) -> float:
+    """Presence across runs x how many runs back it x how tight the ranges are."""
+    if not run_count:
+        return 0.0
+    presence = seen_in / run_count
+    support = seen_in / (seen_in + 1)
     ratios = []
     for f in facts.values():
         spec = profile.signals.get(f.signal)
-        if spec and spec.tolerance and f.tol is not None:
-            ratios.append(min(1.0, f.tol / spec.tolerance))
+        if spec and spec.tolerance and f.lo is not None:
+            ratios.append(min(1.0, f.width / (2 * spec.tolerance)))
     tightness = 1.0 - 0.5 * (float(np.mean(ratios)) if ratios else 1.0)
     return round(presence * (0.5 * support + 0.5 * tightness), 3)

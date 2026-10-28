@@ -1,12 +1,13 @@
-"""Reference RAG: chunk the domain's reference documents and retrieve the best section
-for each step, so every step can cite the POH / handbook / regulation it follows.
+"""Reference RAG: chunk the procedure's registered reference documents (see
+sim2sop.references) and retrieve the best section for each guideline, so it can cite
+the SOP / POH / regulation behind it.
 
 Backends:
   tfidf   pure NumPy TF-IDF cosine, no model needed (default)
   ollama  nomic-embed-text embeddings via Ollama, cached next to the documents
 
-Documents: references/<domain>/*.md|*.txt (Markdown headings become sections) and *.pdf
-(one section per page; needs `pypdf`).
+Documents: .md/.txt (front matter skipped, `#` headings become sections) and .pdf (one
+section per page; needs `pypdf`).
 TODO(ai): swap the in-memory index for LanceDB once the reference set grows.
 """
 
@@ -23,7 +24,7 @@ from pathlib import Path
 import httpx
 import numpy as np
 
-from sim2sop import config
+from sim2sop import config, references
 from sim2sop.schema import Citation
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -49,21 +50,23 @@ def _tokens(text: str) -> list[str]:
     return [_stem(t) for t in TOKEN_RE.findall(text.lower()) if t not in STOP]
 
 
-def load_chunks(domain_dir: Path) -> list[Chunk]:
+def load_chunks(files: list[tuple[str, Path]]) -> list[Chunk]:
+    """files: (document label used in citations, path)."""
     chunks: list[Chunk] = []
-    for path in sorted(domain_dir.glob("*")):
+    for label, path in files:
         if path.suffix.lower() in (".md", ".txt"):
-            chunks += _markdown_chunks(path)
+            chunks += _markdown_chunks(path, label)
         elif path.suffix.lower() == ".pdf":
-            chunks += _pdf_chunks(path)
+            chunks += _pdf_chunks(path, label)
     return chunks
 
 
-def _markdown_chunks(path: Path) -> list[Chunk]:
-    doc_title, section, buf, out = path.stem, "", [], []
-    for line in path.read_text(encoding="utf-8").splitlines():
+def _markdown_chunks(path: Path, doc_title: str) -> list[Chunk]:
+    section, buf, out = "", [], []
+    _, body = references.split_front_matter(path.read_text(encoding="utf-8"))
+    for line in body.splitlines():
         if line.startswith("# "):
-            doc_title = line[2:].strip()
+            continue
         elif line.startswith("#"):
             if buf and section:
                 out.append(Chunk(doc_title, section, " ".join(buf).strip()))
@@ -75,31 +78,39 @@ def _markdown_chunks(path: Path) -> list[Chunk]:
     return out
 
 
-def _pdf_chunks(path: Path) -> list[Chunk]:
+def _pdf_chunks(path: Path, doc_title: str) -> list[Chunk]:
     try:
         from pypdf import PdfReader
     except ImportError:
         return []
-    return [Chunk(path.stem, f"p.{i + 1}", (page.extract_text() or "").strip())
+    return [Chunk(doc_title, f"p.{i + 1}", (page.extract_text() or "").strip())
             for i, page in enumerate(PdfReader(str(path)).pages) if (page.extract_text() or "").strip()]
 
 
 class ReferenceIndex:
-    def __init__(self, domain_dir: Path, backend: str | None = None):
-        self.chunks = load_chunks(domain_dir)
+    def __init__(self, files: list[tuple[str, Path]], cache_dir: Path | None = None,
+                 backend: str | None = None):
+        self.chunks = load_chunks(files)
         self.backend = backend or config.EMBED_PROVIDER
-        self.domain_dir = domain_dir
-        if self.backend == "ollama":
+        self.cache_dir = cache_dir or config.DATA_DIR
+        if self.backend == "ollama" and self.chunks:
             try:
                 self._vecs = self._ollama_matrix()
             except httpx.HTTPError:
                 self.backend = "tfidf"  # stay offline-safe
-        if self.backend == "tfidf":
+        if self.backend != "ollama" or not self.chunks:
+            self.backend = "tfidf"
             self._build_tfidf()
 
     @classmethod
-    def for_domain(cls, references: str) -> "ReferenceIndex":
-        return cls(config.REFERENCES_DIR / references)
+    def for_procedure(cls, procedure: str) -> "ReferenceIndex":
+        """Index the procedure's active reference documents (empty if none are added)."""
+        files = [(doc.label, path) for doc, path in references.active_files(procedure)]
+        return cls(files, cache_dir=references.library_dir(procedure))
+
+    @property
+    def empty(self) -> bool:
+        return not self.chunks
 
     # --- tf-idf ---
     def _build_tfidf(self) -> None:
@@ -129,7 +140,7 @@ class ReferenceIndex:
     def _ollama_matrix(self) -> np.ndarray:
         texts = [f"{c.section}: {c.text}" for c in self.chunks]
         digest = hashlib.sha1(json.dumps([config.EMBED_MODEL, texts]).encode()).hexdigest()[:12]
-        cache = self.domain_dir / f".embeddings-{digest}.npy"
+        cache = self.cache_dir / f".embeddings-{digest}.npy"
         if cache.exists():
             return np.load(cache)
         m = self._embed(texts)

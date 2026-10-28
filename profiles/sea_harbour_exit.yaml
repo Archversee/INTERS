@@ -49,6 +49,3 @@ annotation_keywords:
   engine: [engine_rpm]
   slow: [engine_rpm]
 
-limits:
-  - when: "sog_kt > 10"   # placeholder: use the real port speed limit
-    message: "Above 10 kt harbour speed limit"

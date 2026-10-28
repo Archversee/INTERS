@@ -12,6 +12,8 @@ style: >
 signals:
   lat_deg:        {category: pose, unit: "°", decimals: 5}
   lon_deg:        {category: pose, unit: "°", decimals: 5}
+  track_along_nm: {category: pose, unit: nm, label: distance along runway heading, tolerance: 0.2, decimals: 1}
+  track_offset_nm: {category: pose, unit: nm, label: distance from runway centreline, tolerance: 0.15, decimals: 1}
   alt_ft:         {category: pose, unit: ft, label: altitude MSL, tolerance: 100}
   agl_ft:         {category: pose, unit: ft, label: height AGL, tolerance: 100}
   heading_deg:    {category: pose, unit: "°", label: heading, tolerance: 10, angle: true}
@@ -33,15 +35,20 @@ signals:
   wind_kt:        {category: environment, unit: kt, label: wind speed}
   wind_dir_deg:   {category: environment, unit: "°", label: wind direction, angle: true}
 
-# Snapshotted at each event (trigger) and settle_s later (expected result).
-context: [ias_kt, agl_ft, vs_fpm, heading_deg, rpm]
-trigger_signals: [ias_kt, agl_ft]   # stated in the step's trigger
-result_signals: [ias_kt, vs_fpm]    # stated in the expected result
+# Snapshotted at each event (trigger) and settle_s later (result). flaps_idx is here so
+# reference limits like "flaps_idx >= 2" can be evaluated on the post-action state.
+context: [ias_kt, agl_ft, vs_fpm, heading_deg, rpm, flaps_idx, track_offset_nm, track_along_nm]
+trigger_signals: [ias_kt, agl_ft]   # typical values stated for "when"
+result_signals: [ias_kt, vs_fpm]    # typical values stated for "afterwards"
 
 derived:
   relative_heading:
     # Runway heading = heading when the take-off roll passes 30 kt.
     - {name: rel_hdg, signal: heading_deg, anchor: "on_ground == 1 and ias_kt > 30"}
+  track_frame:
+    # Ground track relative to the take-off roll: along the runway and off its centreline.
+    - {along: track_along_nm, offset: track_offset_nm, side: track_side_nm, anchor: "on_ground == 1 and ias_kt > 30",
+       heading_signal: heading_deg, lat: lat_deg, lon: lon_deg, unit: nm}
 
 # Ordered. The segmenter only moves forward: it enters phase k+1 once its `enter`
 # expression has held for hold_s seconds. rel_hdg is negative left of runway heading.
@@ -50,8 +57,8 @@ phases:
   - {name: takeoff, enter: "on_ground == 1 and throttle_pct > 85", hold_s: 1, trigger_signals: [ias_kt], result_signals: [ias_kt]}
   - {name: climb, enter: "on_ground == 0 and agl_ft > 20", hold_s: 2}
   - {name: crosswind, enter: "rel_hdg < -60", hold_s: 2}
-  - {name: downwind, enter: "abs(rel_hdg) > 150", hold_s: 2}
-  - {name: base, enter: "rel_hdg > 45 and rel_hdg < 135", hold_s: 2}
+  - {name: downwind, enter: "abs(rel_hdg) > 150", hold_s: 2, result_signals: [ias_kt, vs_fpm, track_offset_nm]}
+  - {name: base, enter: "rel_hdg > 45 and rel_hdg < 135", hold_s: 2, trigger_signals: [ias_kt, agl_ft, track_offset_nm]}
   - {name: final, enter: "abs(rel_hdg) < 25 and agl_ft < 900", hold_s: 2}
   - {name: landing, enter: "on_ground == 1", hold_s: 1, trigger_signals: [ias_kt], result_signals: [ias_kt]}
 
@@ -78,7 +85,7 @@ annotation_window_s: 10
 # Keyword in an annotation -> signals it most likely refers to (boosts the match score).
 annotation_keywords:
   flap: [flaps_idx]
-  rotat: [ias_kt, on_ground]
+  rotat: [ias_kt]
   airborne: [on_ground]
   turn: [heading_deg]
   crosswind: [heading_deg]
@@ -94,10 +101,3 @@ annotation_keywords:
   level: [agl_ft]
   altitude: [agl_ft]
 
-limits:
-  - when: "flaps_idx >= 2 and ias_kt > 85"
-    message: "Flaps beyond 10° above Vfe 85 KIAS"
-    reference: "C172 POH — Airspeed limitations"
-  - when: "flaps_idx == 1 and ias_kt > 110"
-    message: "Flaps 10° above Vfe 110 KIAS"
-    reference: "C172 POH — Airspeed limitations"
