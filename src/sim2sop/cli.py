@@ -130,6 +130,19 @@ def cmd_llm_check(args):
     llm = get_llm(provider=args.provider, model=args.model)
     print(f"provider={llm.provider} model={llm.model} base_url={llm.base_url} "
           f"api_key={'set' if llm.api_key else 'not set'}")
+    if llm.provider == "ollama":
+        import httpx
+        try:
+            models = llm.models()
+        except httpx.HTTPError as e:
+            sys.exit(f"Cannot reach Ollama at {llm.base_url}: {e}\n"
+                     "  - Set OLLAMA_URL=http://<server-ip>:11434 in .env\n"
+                     "  - On the server, Ollama must listen on the LAN: set OLLAMA_HOST=0.0.0.0, restart Ollama\n"
+                     "  - Allow inbound TCP 11434 in the server's firewall")
+        print("models on server:", ", ".join(models) or "(none)")
+        if llm.model not in models and f"{llm.model}:latest" not in models:
+            sys.exit(f"Model {llm.model!r} is not on the server: run `ollama pull {llm.model}` there, "
+                     "or set SIM2SOP_MODEL to one listed above")
     if not llm.available():
         sys.exit("Not available (Ollama not running, or no API key). The template writer will be used.")
     reply = llm.chat([{"role": "user", "content": 'Reply with {"ok": true}'}], json_mode=True)

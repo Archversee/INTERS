@@ -9,7 +9,8 @@ ROOT = Path(os.environ.get("SIM2SOP_ROOT", Path(__file__).resolve().parents[2]))
 
 
 def _load_dotenv(path: Path) -> None:
-    """Minimal .env loader (KEY=VALUE lines); real environment variables win."""
+    """Minimal .env loader (KEY=VALUE lines, `  # comment` allowed after a value);
+    real environment variables win."""
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -17,7 +18,8 @@ def _load_dotenv(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        value = value.split(" #", 1)[0].strip().strip('"').strip("'")
+        os.environ.setdefault(key.strip(), value)
 
 
 _load_dotenv(ROOT / ".env")
@@ -51,6 +53,11 @@ _DEFAULT_BASE_URLS = {
 }
 _KEY_ENV = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
 
+# Ollama server, e.g. another machine on the LAN: OLLAMA_URL=http://192.168.1.50:11434.
+# Used for both the LLM (provider "ollama") and embeddings.
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+_DEFAULT_BASE_URLS["ollama"] = OLLAMA_URL
+
 LLM_MODEL = os.environ.get("SIM2SOP_MODEL", _DEFAULT_MODELS.get(LLM_PROVIDER, ""))
 LLM_BASE_URL = os.environ.get("SIM2SOP_LLM_BASE_URL", _DEFAULT_BASE_URLS.get(LLM_PROVIDER, ""))
 LLM_API_KEY = os.environ.get("SIM2SOP_API_KEY") or os.environ.get(_KEY_ENV.get(LLM_PROVIDER, ""), "")
@@ -59,7 +66,6 @@ LLM_TIMEOUT_S = float(os.environ.get("SIM2SOP_LLM_TIMEOUT", "120"))
 # Embeddings for reference RAG. "ollama" uses nomic-embed-text locally; "tfidf" needs nothing.
 EMBED_PROVIDER = os.environ.get("SIM2SOP_EMBED_PROVIDER", "tfidf").lower()
 EMBED_MODEL = os.environ.get("SIM2SOP_EMBED_MODEL", "nomic-embed-text")
-OLLAMA_URL = os.environ.get("OLLAMA_URL", _DEFAULT_BASE_URLS["ollama"])
 
 # Verifier loop: how many rewrite rounds before a mismatch is flagged instead of fixed.
 MAX_VERIFY_ROUNDS = int(os.environ.get("SIM2SOP_MAX_VERIFY_ROUNDS", "2"))

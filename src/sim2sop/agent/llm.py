@@ -72,10 +72,16 @@ class OllamaClient(LLMClient):
 
     def available(self) -> bool:
         try:
-            r = httpx.get(f"{self.base_url}/api/tags", timeout=2)
+            r = httpx.get(f"{self.base_url}/api/tags", timeout=3)
             return r.status_code == 200
         except httpx.HTTPError:
             return False
+
+    def models(self) -> list[str]:
+        """Models pulled on the Ollama server (raises httpx.HTTPError if unreachable)."""
+        r = httpx.get(f"{self.base_url}/api/tags", timeout=5)
+        r.raise_for_status()
+        return sorted(m["name"] for m in r.json().get("models", []))
 
     def chat(self, messages, system=None, tools=None, json_mode=False, temperature=0.2):
         msgs = ([{"role": "system", "content": system}] if system else []) + _to_openai_messages(messages)
