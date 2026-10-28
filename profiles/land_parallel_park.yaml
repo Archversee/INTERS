@@ -1,0 +1,65 @@
+# Land: parallel parking, recorded from CARLA vehicle state.
+# TODO(data): no generator yet; thresholds below are first guesses to tune on generated runs.
+domain: land
+procedure: parallel_park
+title: "Parallel Parking"
+adapter: carla
+sample_hz: 10
+references: land
+style: >
+  Write for a learner driver preparing for the Singapore driving test. Short imperative
+  sentences. Speeds in km/h, distances in metres, steering as wheel angle in degrees.
+
+signals:
+  x_m:             {category: pose, unit: m, decimals: 1}
+  y_m:             {category: pose, unit: m, decimals: 1}
+  heading_deg:     {category: pose, unit: "°", label: heading, tolerance: 5, angle: true}
+  speed_kmh:       {category: motion, unit: km/h, label: speed, tolerance: 2}
+  throttle:        {category: control, label: throttle, decimals: 2}
+  brake:           {category: control, label: brake, decimals: 2}
+  steer_deg:       {category: control, unit: "°", label: steering angle, tolerance: 10}
+  gear:            {category: discrete, label: gear}
+  reverse:         {category: discrete, label: reverse}
+  hand_brake:      {category: discrete, label: handbrake}
+  indicator_left:  {category: discrete, label: left indicator}
+  indicator_right: {category: discrete, label: right indicator}
+
+context: [speed_kmh, steer_deg, heading_deg]
+trigger_signals: [speed_kmh, steer_deg]
+result_signals: [speed_kmh, heading_deg]
+
+phases:
+  - {name: start}
+  - {name: pull_out, enter: "hand_brake == 0 and speed_kmh > 2", hold_s: 1}
+  - {name: approach, enter: "speed_kmh > 8", hold_s: 2}
+  - {name: manoeuvre, enter: "reverse == 1", hold_s: 1}
+  - {name: park, enter: "abs(speed_kmh) < 0.5 and hand_brake == 1", hold_s: 1}
+
+segmentation_signals: [speed_kmh, steer_deg]
+
+events:
+  settle_s: 3
+  toggles:
+    indicator_left:  {name: Left indicator, states: {0: "OFF", 1: "ON"}}
+    indicator_right: {name: Right indicator, states: {0: "OFF", 1: "ON"}}
+    reverse:         {name: "", states: {0: Select drive, 1: Select reverse}}
+    hand_brake:      {name: Handbrake, states: {0: RELEASE, 1: APPLY}}
+  controls:
+    - {signal: steer_deg, name: Steering, min_step: 15, settle_s: 1.5}
+    - {signal: brake, name: Brake, min_step: 0.3, settle_s: 1}
+  turns: {signal: heading_deg, min_change_deg: 20, min_rate_dps: 3, min_duration_s: 2}
+
+annotation_window_s: 6
+annotation_keywords:
+  blind: [indicator_left, indicator_right]
+  signal: [indicator_left, indicator_right]
+  indicat: [indicator_left, indicator_right]
+  revers: [reverse]
+  steer: [steer_deg]
+  lock: [steer_deg]
+  stop: [brake, hand_brake]
+  handbrake: [hand_brake]
+
+limits:
+  - when: "speed_kmh < -6"
+    message: "Reversing faster than walking pace"

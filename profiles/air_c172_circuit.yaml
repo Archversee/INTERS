@@ -1,0 +1,103 @@
+# Air: Cessna 172 left-hand traffic pattern circuit, recorded from MSFS via SimConnect.
+domain: air
+procedure: c172_circuit
+title: "Cessna 172 — Traffic Pattern Circuit"
+adapter: msfs
+sample_hz: 5
+references: air
+style: >
+  Write for a student pilot. Use short imperative sentences and standard phraseology.
+  Airspeeds in KIAS ("kt"), heights in ft AGL, vertical speed in fpm, headings in degrees.
+
+signals:
+  lat_deg:        {category: pose, unit: "°", decimals: 5}
+  lon_deg:        {category: pose, unit: "°", decimals: 5}
+  alt_ft:         {category: pose, unit: ft, label: altitude MSL, tolerance: 100}
+  agl_ft:         {category: pose, unit: ft, label: height AGL, tolerance: 100}
+  heading_deg:    {category: pose, unit: "°", label: heading, tolerance: 10, angle: true}
+  pitch_deg:      {category: pose, unit: "°", label: pitch, tolerance: 2}
+  bank_deg:       {category: pose, unit: "°", label: bank, tolerance: 5}
+  ias_kt:         {category: motion, unit: kt, label: airspeed, tolerance: 5}
+  gs_kt:          {category: motion, unit: kt, label: groundspeed, tolerance: 5}
+  vs_fpm:         {category: motion, unit: fpm, label: vertical speed, tolerance: 150}
+  throttle_pct:   {category: control, unit: "%", label: throttle, tolerance: 10}
+  rpm:            {category: control, unit: rpm, label: engine RPM, tolerance: 100}
+  elevator:       {category: control, label: elevator}
+  aileron:        {category: control, label: aileron}
+  flaps_idx:      {category: discrete, label: flaps}
+  on_ground:      {category: discrete, label: on ground}
+  parking_brake:  {category: discrete, label: parking brake}
+  light_landing:  {category: discrete, label: landing light}
+  light_taxi:     {category: discrete, label: taxi light}
+  light_strobe:   {category: discrete, label: strobe}
+  wind_kt:        {category: environment, unit: kt, label: wind speed}
+  wind_dir_deg:   {category: environment, unit: "°", label: wind direction, angle: true}
+
+# Snapshotted at each event (trigger) and settle_s later (expected result).
+context: [ias_kt, agl_ft, vs_fpm, heading_deg, rpm]
+trigger_signals: [ias_kt, agl_ft]   # stated in the step's trigger
+result_signals: [ias_kt, vs_fpm]    # stated in the expected result
+
+derived:
+  relative_heading:
+    # Runway heading = heading when the take-off roll passes 30 kt.
+    - {name: rel_hdg, signal: heading_deg, anchor: "on_ground == 1 and ias_kt > 30"}
+
+# Ordered. The segmenter only moves forward: it enters phase k+1 once its `enter`
+# expression has held for hold_s seconds. rel_hdg is negative left of runway heading.
+phases:
+  - {name: taxi, description: "Taxi to the runway and line up", trigger_signals: [ias_kt], result_signals: [ias_kt]}
+  - {name: takeoff, enter: "on_ground == 1 and throttle_pct > 85", hold_s: 1, trigger_signals: [ias_kt], result_signals: [ias_kt]}
+  - {name: climb, enter: "on_ground == 0 and agl_ft > 20", hold_s: 2}
+  - {name: crosswind, enter: "rel_hdg < -60", hold_s: 2}
+  - {name: downwind, enter: "abs(rel_hdg) > 150", hold_s: 2}
+  - {name: base, enter: "rel_hdg > 45 and rel_hdg < 135", hold_s: 2}
+  - {name: final, enter: "abs(rel_hdg) < 25 and agl_ft < 900", hold_s: 2}
+  - {name: landing, enter: "on_ground == 1", hold_s: 1, trigger_signals: [ias_kt], result_signals: [ias_kt]}
+
+# Change-point detection snaps phase boundaries to nearby breaks in these signals.
+segmentation_signals: [ias_kt, vs_fpm, rel_hdg, throttle_pct]
+
+events:
+  settle_s: 8
+  toggles:
+    flaps_idx:     {name: Flaps, states: {0: UP, 1: "10°", 2: "20°", 3: "30°"}}
+    on_ground:     {name: "", states: {0: Lift-off, 1: Touchdown}}
+    parking_brake: {name: Parking brake, states: {0: RELEASE, 1: SET}}
+    light_landing: {name: Landing light, states: {0: "OFF", 1: "ON"}}
+    light_taxi:    {name: Taxi light, states: {0: "OFF", 1: "ON"}}
+    light_strobe:  {name: Strobe, states: {0: "OFF", 1: "ON"}}
+  thresholds:
+    - {signal: ias_kt, above: 55, label: Rotate, phases: [takeoff]}
+    - {signal: agl_ft, above: 950, label: Level off at circuit height, phases: [climb, crosswind, downwind], hold_s: 2}
+  controls:
+    - {signal: throttle_pct, name: Throttle, min_step: 12}
+  turns: {signal: heading_deg, min_change_deg: 45, min_rate_dps: 1.0, min_duration_s: 5}
+
+annotation_window_s: 10
+# Keyword in an annotation -> signals it most likely refers to (boosts the match score).
+annotation_keywords:
+  flap: [flaps_idx]
+  rotat: [ias_kt, on_ground]
+  airborne: [on_ground]
+  turn: [heading_deg]
+  crosswind: [heading_deg]
+  downwind: [heading_deg]
+  base: [heading_deg]
+  final: [heading_deg]
+  power: [throttle_pct]
+  throttle: [throttle_pct]
+  rolling: [throttle_pct]
+  light: [light_landing, light_taxi, light_strobe]
+  brake: [parking_brake]
+  touchdown: [on_ground]
+  level: [agl_ft]
+  altitude: [agl_ft]
+
+limits:
+  - when: "flaps_idx >= 2 and ias_kt > 85"
+    message: "Flaps beyond 10° above Vfe 85 KIAS"
+    reference: "C172 POH — Airspeed limitations"
+  - when: "flaps_idx == 1 and ias_kt > 110"
+    message: "Flaps 10° above Vfe 110 KIAS"
+    reference: "C172 POH — Airspeed limitations"

@@ -1,0 +1,54 @@
+# Sea: harbour exit, recorded from a bridge simulator as NMEA 0183.
+# TODO(data): no generator yet; thresholds below are first guesses to tune on generated runs.
+domain: sea
+procedure: harbour_exit
+title: "Harbour Exit"
+adapter: nmea
+sample_hz: 1
+references: sea
+style: >
+  Write for a bridge watchkeeping officer. Standard helm and engine orders. Speeds in knots,
+  distances in nautical miles or cables, headings and rudder in degrees.
+
+signals:
+  lat_deg:     {category: pose, unit: "°", decimals: 5}
+  lon_deg:     {category: pose, unit: "°", decimals: 5}
+  heading_deg: {category: pose, unit: "°", label: heading, tolerance: 5, angle: true}
+  cog_deg:     {category: motion, unit: "°", label: course over ground, tolerance: 5, angle: true}
+  sog_kt:      {category: motion, unit: kt, label: speed over ground, tolerance: 1, decimals: 1}
+  rudder_deg:  {category: control, unit: "°", label: rudder angle, tolerance: 5}
+  engine_rpm:  {category: control, unit: rpm, label: engine RPM, tolerance: 20}
+
+context: [sog_kt, heading_deg, rudder_deg]
+trigger_signals: [sog_kt, heading_deg]
+result_signals: [sog_kt, heading_deg]
+
+phases:
+  - {name: unmoor}
+  - {name: harbour_exit, enter: "sog_kt > 1", hold_s: 10}
+  - {name: transit, enter: "sog_kt > 8", hold_s: 30}
+
+segmentation_signals: [sog_kt, rudder_deg, engine_rpm]
+
+events:
+  settle_s: 30
+  thresholds:
+    - {signal: sog_kt, above: 6, label: Harbour speed reached, phases: [harbour_exit]}
+  controls:
+    - {signal: rudder_deg, name: Rudder, min_step: 10, settle_s: 5}
+    - {signal: engine_rpm, name: Engine order, min_step: 100, settle_s: 10}
+  turns: {signal: heading_deg, min_change_deg: 20, min_rate_dps: 0.3, min_duration_s: 20}
+
+annotation_window_s: 30
+annotation_keywords:
+  starboard: [rudder_deg, heading_deg]
+  port: [rudder_deg, heading_deg]
+  alter: [heading_deg]
+  breakwater: [heading_deg]
+  ahead: [engine_rpm]
+  engine: [engine_rpm]
+  slow: [engine_rpm]
+
+limits:
+  - when: "sog_kt > 10"   # placeholder: use the real port speed limit
+    message: "Above 10 kt harbour speed limit"

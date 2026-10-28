@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Sim-to-SOP generated data (runs, SOP versions, correction memory)
+data/
+references/**/.embeddings-*.npy
