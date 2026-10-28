@@ -28,9 +28,13 @@ class GraphState(TypedDict, total=False):
     anchor_run: str | None
 
 
+Progress = Callable[[int, int, str], None]   # (done, total, message)
+
+
 def build_graph(profile: Profile, writer: Any, planner: Callable[[], PlanResult],
-                max_rounds: int | None = None):
-    """`planner` runs the planner with the run sets / limits chosen by the caller."""
+                max_rounds: int | None = None, progress: Progress | None = None):
+    """`planner` runs the planner with the run sets / limits chosen by the caller;
+    `progress` is told about each step as it is written (for UIs)."""
     max_rounds = config.MAX_VERIFY_ROUNDS if max_rounds is None else max_rounds
 
     def plan_node(state: GraphState) -> GraphState:
@@ -40,8 +44,12 @@ def build_graph(profile: Profile, writer: Any, planner: Callable[[], PlanResult]
 
     def write_node(state: GraphState) -> GraphState:
         by_id = {s.id: s for s in state["steps"]}
-        for sid in state["pending"]:
+        pending = state["pending"]
+        for i, sid in enumerate(pending):
             step = by_id[sid]
+            if progress:
+                verb = "Rewriting" if state["round"] else "Writing"
+                progress(i, len(pending), f"{verb} {step.label}")
             text = writer.write(step, state["feedback"].get(sid))
             for field, value in text.items():
                 setattr(step, field, value if value is not None else ("" if field != "intent" else None))

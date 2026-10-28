@@ -16,7 +16,7 @@ from pathlib import Path
 
 from sim2sop import guidelines_store as store
 from sim2sop import references, render, storage
-from sim2sop.agent.graph import build_graph
+from sim2sop.agent.graph import Progress, build_graph
 from sim2sop.agent.llm import LLMClient, get_llm
 from sim2sop.agent.planner import plan
 from sim2sop.agent.verifier import verify_step
@@ -43,23 +43,25 @@ def make_writer(profile: Profile, refs: ReferenceIndex, llm: LLMClient | None = 
 
 # --- create / update -----------------------------------------------------------------------
 
-def create_guidelines(profile: Profile, llm: LLMClient | None = None) -> Guidelines:
+def create_guidelines(profile: Profile, llm: LLMClient | None = None,
+                      progress: Progress | None = None) -> Guidelines:
     """New guidelines from every ingested run of the procedure."""
     runs = storage.list_runs(profile.procedure)
     if not runs:
         raise ValueError(f"No runs ingested for {profile.procedure!r}")
     ids = [r.run_id for r in runs]
     envs = [r.meta.environment for r in runs if r.meta.environment]
-    return _build(profile, mode="create", llm=llm, previous=None,
+    return _build(profile, mode="create", llm=llm, previous=None, progress=progress,
                   phase_runs={p: ids for p in profile.phase_names},
                   environment=envs[-1] if envs else None)
 
 
-def update_guidelines(profile: Profile, llm: LLMClient | None = None) -> Guidelines:
+def update_guidelines(profile: Profile, llm: LLMClient | None = None,
+                      progress: Progress | None = None) -> Guidelines:
     """Next version from the latest published guidelines (or the latest draft)."""
     prev = store.latest_published(profile.procedure) or store.latest(profile.procedure)
     if prev is None:
-        return create_guidelines(profile, llm)
+        return create_guidelines(profile, llm, progress)
     runs = storage.list_runs(profile.procedure)
     known = set(prev.runs)
     phase_runs = {p: list(prev.phase_runs.get(p, prev.runs)) for p in profile.phase_names}
@@ -80,13 +82,13 @@ def update_guidelines(profile: Profile, llm: LLMClient | None = None) -> Guideli
         environment = report.environment
         for p in phase_runs:
             phase_runs[p] += report.post_runs
-    return _build(profile, mode="update", llm=llm, previous=prev, phase_runs=phase_runs,
+    return _build(profile, mode="update", llm=llm, previous=prev, phase_runs=phase_runs, progress=progress,
                   environment=environment, report=report)
 
 
 def _build(profile: Profile, *, mode: str, llm: LLMClient | None, previous: Guidelines | None,
            phase_runs: dict[str, list[str]], environment: str | None,
-           report: ChangeReport | None = None) -> Guidelines:
+           report: ChangeReport | None = None, progress: Progress | None = None) -> Guidelines:
     all_runs = storage.list_runs(profile.procedure)
     used_ids = {i for ids in phase_runs.values() for i in ids}
     runs = [r for r in all_runs if r.run_id in used_ids]
@@ -96,7 +98,8 @@ def _build(profile: Profile, *, mode: str, llm: LLMClient | None, previous: Guid
     refs = ReferenceIndex.for_procedure(profile.procedure)
     writer = make_writer(profile, refs, llm)
 
-    graph = build_graph(profile, writer, lambda: plan(runs, profile, refs, limits, reqs, previous, phase_runs))
+    graph = build_graph(profile, writer, lambda: plan(runs, profile, refs, limits, reqs, previous, phase_runs),
+                        progress=progress)
     state = graph.invoke({})
 
     flags: list[Flag] = []
