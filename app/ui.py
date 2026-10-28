@@ -8,11 +8,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from sim2sop import config, references, storage
+from sim2sop import config, storage
 from sim2sop import guidelines_store as store
 from sim2sop.agent.llm import get_llm
 from sim2sop.generate import generate
 from sim2sop.ingest import ingest_run
+from sim2sop.learn.changes import step_slots
+from sim2sop.pipeline import approve, create_guidelines, update_guidelines
 from sim2sop.profiles import Profile, list_profiles, load_profile
 from sim2sop.schema import Guidelines, Step
 
@@ -38,6 +40,11 @@ FLAG_LABELS = {
     "unchecked": ("Not checked against official limits", ":material/gpp_maybe:"),
     "data": ("Data issues", ":material/database:"),
 }
+FIELDS = [("action", "What to do"), ("trigger", "When"), ("intent", "Why"), ("typical", "Typical"),
+          ("limit", "Hard limit")]
+# Change reasons that matter to a reviewer (anything else is a routine range refinement).
+IMPORTANT = ("Technique change", "See ", "Hard limit", "Value clipped", "Now ", "New action", "Instructor",
+             "Re-checked", "New guideline")
 
 
 # --- session state ------------------------------------------------------------------------
@@ -79,8 +86,8 @@ def phase_title(name: str) -> str:
 def run_title(run_id: str) -> str:
     n = run_id.rsplit("_", 1)[-1]
     if "obstacle" in run_id:
-        return f"Flight {n} (after new obstacle)"
-    return f"Flight {n}" if n.isdigit() else run_id
+        return f"Flight {int(n)} after the new obstacle" if n.isdigit() else run_id
+    return f"Flight {int(n)}" if n.isdigit() else run_id
 
 
 def mode_title(doc: Guidelines) -> str:
@@ -94,43 +101,6 @@ def doc_badges(doc: Guidelines) -> str:
                  else ":red-badge[:material/gpp_maybe: Unchecked — no official documents]")
     parts.append(":gray-badge[Advisory]")
     return " ".join(parts)
-
-
-# --- workflow state ---------------------------------------------------------------------------
-
-def news_since(doc: Guidelines | None, prof: Profile) -> dict:
-    runs = storage.list_runs(prof.procedure)
-    docs = references.list_references(prof.procedure)
-    if doc is None:
-        return {"runs": runs, "refs": docs}
-    return {"runs": [r for r in runs if r.run_id not in doc.runs],
-            "refs": [d for d in docs if d.label not in doc.references]}
-
-
-def next_action(prof: Profile) -> tuple[str, str, str]:
-    """(message, page key, button label) for the most useful next step."""
-    runs = storage.list_runs(prof.procedure)
-    doc = store.latest(prof.procedure)
-    if not runs:
-        return "Start by adding instructor flights from the simulator.", "runs", "Add flights"
-    if doc is None:
-        return (f"You have {len(runs)} flight{'s' if len(runs) != 1 else ''}. Create the first guidelines.",
-                "guidelines", "Create guidelines")
-    if doc.pending:
-        return (f"Version {doc.version} has {len(doc.pending)} change{'s' if len(doc.pending) != 1 else ''} "
-                "waiting for your approval.", "review", "Review changes")
-    new = news_since(doc, prof)
-    if new["runs"] or new["refs"]:
-        bits = []
-        if new["runs"]:
-            bits.append(f"{len(new['runs'])} new flight{'s' if len(new['runs']) != 1 else ''}")
-        if new["refs"]:
-            bits.append(f"{len(new['refs'])} new document{'s' if len(new['refs']) != 1 else ''}")
-        return f"{' and '.join(bits)} since version {doc.version}. Update the guidelines.", "guidelines", "Update guidelines"
-    if not doc.checked:
-        return ("The guidelines are not checked against official limits yet. Add reference documents.",
-                "references", "Add documents")
-    return "Everything is up to date.", "guidelines", "View guidelines"
 
 
 def link_button(page_key: str, label: str, icon: str = ":material/arrow_forward:", primary: bool = True,
@@ -150,20 +120,27 @@ def sample_dirs(prof: Profile, obstacle: bool = False) -> list[Path]:
     return dirs
 
 
-def add_sample_flights(prof: Profile, count: int | None = None, obstacle: bool = False) -> int:
+def remaining_samples(prof: Profile, obstacle: bool = False) -> list[Path]:
+    if prof.domain != "air":
+        return []
     known = {r.run_id for r in storage.list_runs(prof.procedure)}
-    todo = [d for d in sample_dirs(prof, obstacle) if d.name not in known][:count]
-    for d in todo:
+    return [d for d in sample_dirs(prof, obstacle) if d.name not in known]
+
+
+def add_flights(prof: Profile, dirs: list[Path]) -> None:
+    """Ingest flights, then update the guidelines and pop up the review."""
+    for d in dirs:
         ingest_run(d, prof)
-    return len(todo)
+    names = [run_title(d.name) for d in dirs]
+    refresh_guidelines(prof, f"{names[0]} added" if len(names) == 1 else f"{len(names)} flights added")
 
 
-# --- long-running builds -----------------------------------------------------------------------
+# --- building and reviewing ----------------------------------------------------------------------
 
 def run_build(label: str, fn):
     """Run fn(progress) inside a status box with a progress bar."""
     with st.status(label, expanded=True) as status:
-        bar = st.progress(0.0, text="Analysing flights and planning the guidelines…")
+        bar = st.progress(0.0, text="Analysing the flights and checking the official limits…")
 
         def progress(i: int, n: int, msg: str) -> None:
             bar.progress(min(1.0, (i + 1) / max(n, 1)), text=f"{msg}  ({i + 1} of {n})")
@@ -171,6 +148,137 @@ def run_build(label: str, fn):
         result = fn(progress)
         status.update(label=f"{label} — done", state="complete", expanded=False)
     return result
+
+
+def refresh_guidelines(prof: Profile, title: str) -> Guidelines | None:
+    """Create or update the guidelines after new data, then queue the review popup."""
+    if not storage.list_runs(prof.procedure):
+        return None
+    exists = store.latest(prof.procedure) is not None
+    doc = run_build("Updating the guidelines" if exists else "Creating the guidelines",
+                    (lambda p: update_guidelines(prof, llm(), p)) if exists
+                    else (lambda p: create_guidelines(prof, llm(), p)))
+    if doc.pending:
+        st.session_state["review_queue"] = {"version": doc.version, "title": title}
+    else:
+        waiting = any(f.kind == "technique_change" and "waiting for" in f.message for f in doc.flags)
+        st.session_state["toast"] = f"{title}: the guidelines did not need to change." + (
+            f" Flights in the new conditions are held back until {prof.change_min_runs} of them agree."
+            if waiting else "")
+    return doc
+
+
+def show_queued() -> None:
+    """Toasts and the review popup queued by the previous action (call once per run)."""
+    if msg := st.session_state.pop("toast", None):
+        st.toast(msg, icon=":material/info:")
+    if q := st.session_state.get("review_queue"):
+        review_dialog(q["version"], q["title"])
+
+
+def pending_banner(prof: Profile, key: str) -> None:
+    doc = store.latest(prof.procedure)
+    if doc and doc.pending and not st.session_state.get("review_queue"):
+        with st.container(border=True):
+            st.markdown(f":orange[:material/fact_check:] **{len(doc.pending)} change"
+                        f"{'s' if len(doc.pending) != 1 else ''} in version {doc.version} "
+                        "waiting for your approval.**")
+            if st.button("Review now", type="primary", icon=":material/fact_check:", key=key):
+                st.session_state["review_queue"] = {"version": doc.version, "title": f"Version {doc.version}"}
+                st.rerun()
+
+
+def _dismiss_review() -> None:
+    st.session_state.pop("review_queue", None)
+
+
+def _is_important(s: Step) -> bool:
+    return s.change == "added" or any(r.startswith(IMPORTANT) for r in s.change_reasons)
+
+
+def _decision(s: Step, version: int) -> str:
+    return st.segmented_control("Decision", ["Approve", "Reject"], default="Approve",
+                                key=f"dec-{version}-{s.id}", label_visibility="collapsed") or "Approve"
+
+
+def _before_after(old: Step, new: Step) -> None:
+    changed = [(f, label) for f, label in FIELDS if (getattr(old, f) or "") != (getattr(new, f) or "")]
+    if not changed:
+        return
+    a, b = st.columns(2)
+    a.caption("Before")
+    b.caption("After")
+    for f, label in changed:
+        a.markdown(f"**{label}** — {getattr(old, f) or '—'}")
+        b.markdown(f"**{label}** — {getattr(new, f) or '—'}")
+
+
+@st.dialog("Review the guideline changes", width="large", on_dismiss=_dismiss_review)
+def review_dialog(version: int, title: str) -> None:
+    prof = profile()
+    doc = store.load(prof.procedure, version)
+    if not doc.pending:
+        st.success("Nothing left to review.")
+        return
+    prev = store.load(prof.procedure, doc.parent_version) if doc.parent_version else None
+    st.markdown(f"### {title}")
+    st.markdown(doc_badges(doc))
+
+    for f in doc.flags:
+        if f.kind == "technique_change":
+            st.info(f.message, icon=":material/swap_horiz:")
+    capped = [f.message for f in doc.flags if f.kind == "clipped"]
+    if capped:
+        st.warning("**Capped at an official limit:** " + " ".join(capped), icon=":material/vertical_align_top:")
+
+    decisions: dict[str, str] = {}
+    if prev is None:
+        st.markdown(f"**{len(doc.steps)} new guidelines** from {len(doc.runs)} flight"
+                    f"{'s' if len(doc.runs) != 1 else ''}. Read through and publish.")
+        with st.expander("See all guidelines"):
+            for phase in doc.phases:
+                steps = doc.steps_in(phase)
+                if steps:
+                    st.markdown(f"**{phase_title(phase)}**\n" + "\n".join(f"- {s.action}" for s in steps))
+    else:
+        slot_of = {s.id: k for k, s in step_slots(doc.steps).items()}
+        prev_slots = step_slots(prev.steps)
+        important = [s for s in doc.pending if _is_important(s)]
+        routine = [s for s in doc.pending if not _is_important(s)]
+        st.markdown(f"**{len(doc.pending)} guideline{'s' if len(doc.pending) != 1 else ''} changed.** "
+                    "Approve keeps the new text; Reject keeps the previous version.")
+        for s in important:
+            with st.container(border=True):
+                head, choice = st.columns([4, 2])
+                head.markdown(f"**{phase_title(s.phase)} · {s.action}**")
+                head.markdown(step_badges(s))
+                with choice:
+                    decisions[s.id] = _decision(s, version)
+                st.markdown("\n".join(f"- {r}" for r in s.change_reasons))
+                old = prev_slots.get(slot_of[s.id])
+                if old is not None:
+                    _before_after(old, s)
+                else:
+                    guideline_body(s, doc)
+        if routine:
+            with st.expander(f"{len(routine)} guideline{'s' if len(routine) != 1 else ''} had their typical "
+                             "ranges refined by the new data", icon=":material/tune:", expanded=not important):
+                for s in routine:
+                    head, choice = st.columns([4, 2])
+                    head.markdown(f"**{phase_title(s.phase)} · {s.action}**  \n"
+                                  + "; ".join(s.change_reasons[:3]))
+                    with choice:
+                        decisions[s.id] = _decision(s, version)
+        if doc.removed:
+            st.markdown("**Removed:** " + ", ".join(f"{phase_title(s.phase)} · {s.label}" for s in doc.removed))
+
+    rejects = [sid for sid, d in decisions.items() if d == "Reject"]
+    label = "Approve and publish" if not rejects else f"Publish ({len(rejects)} rejected)"
+    if st.button(label, type="primary", icon=":material/publish:"):
+        approve(prof, doc.version, None, rejects)
+        st.session_state.pop("review_queue", None)
+        st.session_state["toast"] = f"Version {doc.version} published."
+        st.rerun()
 
 
 # --- guideline card -----------------------------------------------------------------------------
@@ -229,9 +337,9 @@ def step_chart(s: Step, doc: Guidelines, prof: Profile) -> None:
     if fact and fact.lo is not None:
         fig.add_hrect(y0=fact.lo, y1=fact.hi, opacity=0.18, line_width=0, fillcolor="green",
                       annotation_text="typical range", annotation_position="top left")
-        for lim, name in ((fact.limit_max, "hard limit"), (fact.limit_min, "hard limit")):
+        for lim in (fact.limit_max, fact.limit_min):
             if lim is not None:
-                fig.add_hline(y=lim, line_color="red", line_dash="dot", annotation_text=name)
+                fig.add_hline(y=lim, line_color="red", line_dash="dot", annotation_text="hard limit")
     fig.add_vline(x=0, line_dash="dash", annotation_text="action")
     unit = prof.unit(sig) or ""
     fig.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10), showlegend=False,

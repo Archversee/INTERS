@@ -8,9 +8,9 @@ import streamlit as st
 import ui
 
 from sim2sop import guidelines_store as store
+from sim2sop import references, storage
 from sim2sop import render as render_html
-from sim2sop import storage
-from sim2sop.pipeline import apply_edit, create_guidelines, update_guidelines
+from sim2sop.pipeline import apply_edit
 
 EDITABLE = {"action": "What to do", "trigger": "When", "intent": "Why", "typical": "Typical"}
 
@@ -52,34 +52,28 @@ def details(step_id: str, version: int) -> None:
         st.session_state["flash"] = (f"Saved as version {new.version}." if edited.verified else
                                      f"Saved as version {new.version}, but a number in your text does not "
                                      "match the flight data — see the step's warnings.")
+        # Apply the same wording to similar steps right away; the review pops up if any changed.
+        ui.refresh_guidelines(prof, f"Your edit to {s.label}, applied to similar steps")
         st.rerun()
 
 
 def _build_bar(prof, doc) -> None:
+    """Guidelines normally update by themselves when a flight or document is added. This covers
+    data added another way (e.g. the command line)."""
     runs = storage.list_runs(prof.procedure)
     if doc is None:
         with st.container(border=True):
-            if not runs:
-                st.markdown(":material/info: Add instructor flights first.")
-                ui.link_button("runs", "Go to flights", key="g-runs")
-                return
-            st.markdown(f"Create guidelines from **{len(runs)} flight{'s' if len(runs) != 1 else ''}**.")
-            if st.button("Create guidelines", type="primary", icon=":material/auto_awesome:"):
-                ui.run_build("Creating guidelines", lambda p: create_guidelines(prof, ui.llm(), p))
-                st.rerun()
+            st.markdown(":material/info: The guidelines are created automatically when you add the first flight.")
+            ui.link_button("runs", "Add flights", key="g-runs")
         return
-    new = ui.news_since(doc, prof)
-    if new["runs"] or new["refs"]:
-        bits = [f"{len(new['runs'])} new flight{'s' if len(new['runs']) != 1 else ''}"] if new["runs"] else []
-        bits += [f"{len(new['refs'])} new document{'s' if len(new['refs']) != 1 else ''}"] if new["refs"] else []
+    new_runs = [r for r in runs if r.run_id not in doc.runs]
+    new_docs = [d for d in references.list_references(prof.procedure) if d.label not in doc.references]
+    if new_runs or new_docs:
         with st.container(border=True):
-            st.markdown(f":material/update: **{' and '.join(bits)}** since version {doc.version}. "
-                        "Updating rewrites only the steps they affect.")
-            if st.button("Update guidelines", type="primary", icon=":material/auto_awesome:"):
-                new_doc = ui.run_build("Updating guidelines", lambda p: update_guidelines(prof, ui.llm(), p))
-                if new_doc.pending:
-                    st.session_state["flash"] = (f"Version {new_doc.version}: {len(new_doc.pending)} step(s) changed "
-                                                 "and wait for your approval on the Review page.")
+            st.markdown(f":material/update: There is data the guidelines do not include yet "
+                        f"({len(new_runs)} flight(s), {len(new_docs)} document(s)).")
+            if st.button("Update the guidelines", type="primary", icon=":material/auto_awesome:"):
+                ui.refresh_guidelines(prof, "Guidelines updated")
                 st.rerun()
 
 
@@ -103,10 +97,7 @@ def render() -> None:
         st.markdown(f"**{doc.title}** · version {doc.version} · {ui.mode_title(doc).lower()} from "
                     f"{len(doc.runs)} flight{'s' if len(doc.runs) != 1 else ''}")
         st.markdown(ui.doc_badges(doc))
-    if doc.pending:
-        st.warning(f"{len(doc.pending)} step(s) in this version changed and need your approval.",
-                   icon=":material/fact_check:")
-        ui.link_button("review", "Review changes", key="g-review")
+    ui.pending_banner(prof, key="g-review")
     st.caption("Advisory guidelines: how instructors typically fly it. Where they differ from an official "
                "document, the official document wins.")
 

@@ -1,153 +1,178 @@
-"""Guided demo: the pitch story, one click per step. Every step does the real work."""
+"""Guided demo: official documents are loaded first, then flights are added one at a time and
+the guidelines change as needed. Every step does the real work and pops up the review."""
 
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass
+from typing import Callable
 
 import streamlit as st
 import ui
 
 from sim2sop import config, references, storage
 from sim2sop import guidelines_store as store
-from sim2sop.pipeline import apply_edit, approve, create_guidelines, update_guidelines
-from sim2sop.profiles import load_profile
+from sim2sop.learn import memory
+from sim2sop.pipeline import apply_edit
+from sim2sop.profiles import Profile, load_profile
 
 PROFILE = "air_c172_circuit"
 BASE_DOCS = ("c172_poh_notes.md", "aerodrome_sop_notes.md", "faa_afh_traffic_pattern_notes.md")
+NOTAM = "notam_crane.md"
 
 
-def _publish(prof) -> None:
-    doc = store.latest(prof.procedure)
-    if doc and doc.pending:
-        approve(prof)  # in the demo the instructor approves every change
+@dataclass
+class Item:
+    title: str
+    story: str
+    button: str
+    done: Callable[[Profile], bool]
+    run: Callable[[Profile], None]
 
 
-def _ref(prof, name: str) -> None:
-    references.add_reference(prof.procedure, config.REFERENCES_DIR / prof.references / name)
+def _ingested(prof: Profile) -> set[str]:
+    return {r.run_id for r in storage.list_runs(prof.procedure)}
 
 
-def step1(prof):
-    ui.add_sample_flights(prof, 1)
-    doc = ui.run_build("Creating guidelines from one flight", lambda p: create_guidelines(prof, ui.llm(), p))
-    return [f"Version {doc.version}: **{len(doc.steps)} guidelines** from 1 flight.",
-            ":red-badge[Unchecked] — no official documents yet, so no hard limits are shown."]
+def _flight(i: int, obstacle: bool = False) -> tuple[Callable, Callable]:
+    def target(prof):
+        return ui.sample_dirs(prof, obstacle)[i]
+
+    return (lambda prof: target(prof).name in _ingested(prof),
+            lambda prof: ui.add_flights(prof, [target(prof)]))
 
 
-def step2(prof):
-    _publish(prof)
-    for name in BASE_DOCS:
-        _ref(prof, name)
-    doc = ui.run_build("Checking against the official documents", lambda p: update_guidelines(prof, ui.llm(), p))
-    capped = [f for f in doc.flags if f.kind == "clipped"]
-    lines = [f"Version {doc.version}: :blue-badge[Checked] against {len(doc.references)} documents; "
-             f"{doc.metrics['within_limits']:.0%} of limited values are inside the limits."]
-    if capped:
-        lines.append("The instructor selected **flaps 20 at 89 kt**, above the 85 kt limit in the POH. "
-                     "The guideline is capped at 85 kt and the flight is flagged.")
-    return lines
+def _notam_done(prof: Profile) -> bool:
+    return any(d.kind == "notam" for d in references.list_references(prof.procedure))
 
 
-def step3(prof):
-    _publish(prof)
-    before = store.latest(prof.procedure)
-    ui.add_sample_flights(prof)
-    doc = ui.run_build("Learning from five flights", lambda p: update_guidelines(prof, ui.llm(), p))
-    technique = [s for s in doc.steps if not s.mandatory]
-    return [f"Version {doc.version}: typical ranges are **{before.metrics['range_width_ratio'] / doc.metrics['range_width_ratio']:.1f}× tighter** "
-            f"and confidence rose from {before.metrics['mean_confidence']:.0%} to {doc.metrics['mean_confidence']:.0%}.",
-            f"{len(technique)} action(s) only some instructors do became technique notes "
-            f"({', '.join(s.label for s in technique)}).",
-            "The flight that broke the flaps limit is left out of the flaps-20 typical range."]
+def _add_notam(prof: Profile) -> None:
+    doc = references.add_reference(prof.procedure, config.REFERENCES_DIR / prof.references / NOTAM)
+    ui.refresh_guidelines(prof, f"{doc.label} issued")
 
 
-def step4(prof):
-    _publish(prof)
-    _ref(prof, "notam_crane.md")
-    ui.add_sample_flights(prof, obstacle=True)
-    doc = ui.run_build("Updating for the new obstacle", lambda p: update_guidelines(prof, ui.llm(), p))
-    changed = [s for s in doc.steps if s.change]
-    phases = sorted({ui.phase_title(s.phase) for s in changed})
-    return [f"Version {doc.version}: technique change detected. **Only {len(changed)} guidelines changed**, "
-            f"all in {' and '.join(phases)} — every other step is word-for-word the same.",
-            "Each change lists its reasons and cites the NOTAM. They are waiting for approval on the Review page."]
+def _edit_done(prof: Profile) -> bool:
+    return any(c.procedure == prof.procedure for c in memory.all_corrections())
 
 
-def step5(prof):
-    _publish(prof)
+def _edit(prof: Profile) -> None:
     doc = store.latest(prof.procedure)
     flaps10 = next(s for s in doc.steps if s.key == "toggle:flaps_idx:1")
-    text = f"Select {flaps10.label}, then check the flap position indicator."
-    apply_edit(prof, flaps10.id, "action", text)
-    new = ui.run_build("Regenerating with the instructor's correction", lambda p: update_guidelines(prof, ui.llm(), p))
-    adopted = [s.action for s in new.steps if s.change]
-    _publish(prof)
-    return [f"The instructor changed **{flaps10.label}** to: *{text}*",
-            "On the next update the same wording was applied to:"] + [f"- {a}" for a in adopted]
+    apply_edit(prof, flaps10.id, "action", f"Select {flaps10.label}, then check the flap position indicator.")
+    ui.refresh_guidelines(prof, f"Instructor reworded {flaps10.label}; same wording applied to similar steps")
 
 
-STEPS = [
-    ("Create guidelines from one flight",
-     "An instructor flies the circuit once, saying what they do. No official documents yet.", step1, "guidelines"),
-    ("Add the official documents",
-     "Add the Cessna 172 manual (POH), the aerodrome SOP and a flying handbook. They set the hard limits.",
-     step2, "guidelines"),
-    ("Add four more flights",
-     "More instructors fly the same circuit. The system learns what they typically do.", step3, "progress"),
-    ("A new obstacle appears",
-     "A crane goes up under the downwind leg. A NOTAM is issued and three instructors fly a wider circuit.",
-     step4, "review"),
-    ("An instructor improves the wording",
-     "The instructor rewrites one step. The system remembers and writes similar steps the same way.",
-     step5, "guidelines"),
+ITEMS = [
+    Item("First instructor flight",
+         "The first instructor flies the circuit and calls out each action. The guidelines are created from "
+         "this one flight. Watch for the flaps: this instructor selected flaps 20 too fast.",
+         "Add flight 1", *_flight(0)),
+    Item("Second flight", "A second instructor flies the same circuit. Typical ranges start to form.",
+         "Add flight 2", *_flight(1)),
+    Item("Third flight", "Only some instructors make a power correction on short final — that becomes a "
+         "technique note rather than a core step.", "Add flight 3", *_flight(2)),
+    Item("Fourth flight", "With more flights, the ranges get tighter and the confidence rises.",
+         "Add flight 4", *_flight(3)),
+    Item("Fifth flight", "Five flights: the typical technique is well established.", "Add flight 5", *_flight(4)),
+    Item("A NOTAM is issued", "A crane goes up under the downwind leg. The NOTAM says to fly downwind at least "
+         "1.5 nm from the runway. The guidelines are re-checked against the new limit.",
+         "Add the NOTAM", _notam_done, _add_notam),
+    Item("First flight around the obstacle", "An instructor flies a wider circuit. One flight is not enough "
+         "to change the technique — it is held back.", "Add obstacle flight 1", *_flight(0, obstacle=True)),
+    Item("Second flight around the obstacle", "Still held back: the system waits for 3 flights that agree.",
+         "Add obstacle flight 2", *_flight(1, obstacle=True)),
+    Item("Third flight around the obstacle", "Three flights agree: a technique change. Only the downwind and "
+         "base guidelines are rebuilt from the new flights.", "Add obstacle flight 3", *_flight(2, obstacle=True)),
+    Item("An instructor improves the wording", "The instructor rewrites the Flaps 10° step. The same wording "
+         "is applied to the other flap steps.", "Make the edit", _edit_done, _edit),
 ]
 
 
-def _reset(prof) -> None:
+def _summary(prof: Profile, before: int | None) -> list[str]:
+    doc = store.latest(prof.procedure)
+    if doc is None or doc.version == before:
+        return ["No new version."]
+    m = doc.metrics
+    changed = int(m.get("steps_changed", 0))
+    if doc.mode == "create":
+        lines = [f"Version {doc.version}: **{len(doc.steps)} guidelines created**, "
+                 + ("checked against the official limits." if doc.checked else "unchecked.")]
+    else:
+        lines = [f"Version {doc.version}: **{changed} guideline{'s' if changed != 1 else ''} changed**"
+                 if changed else f"Version {doc.version}: nothing needed to change."]
+    lines.append(f"Range width {m['range_width_ratio']:.2f} · confidence {m['mean_confidence']:.0%} · "
+                 f"{int(m['technique_steps'])} technique note(s)")
+    for f in doc.flags:
+        if f.kind == "technique_change":
+            lines.append(f":material/swap_horiz: {f.message}")
+    if doc.mode == "create" and any(f.kind == "clipped" for f in doc.flags):
+        lines.append(":material/vertical_align_top: Flaps 20 at 89 kt is above the POH limit of 85 kt — "
+                     "the guideline is capped at 85 kt and the flight is flagged.")
+    return lines
+
+
+def _reset(prof: Profile) -> None:
     storage.delete_runs(prof.procedure)
     shutil.rmtree(config.GUIDELINES_DIR / prof.procedure, ignore_errors=True)
     references.clear_references(prof.procedure)
     shutil.rmtree(config.MEMORY_DIR, ignore_errors=True)
     ui.telemetry.clear()
-    st.session_state["demo_results"] = {}
+    st.session_state["demo_log"] = {}
+    st.session_state.pop("review_queue", None)
+    for name in BASE_DOCS:
+        references.add_reference(prof.procedure, config.REFERENCES_DIR / prof.references / name)
+    ui.sample_dirs(prof)
+    ui.sample_dirs(prof, obstacle=True)
 
 
 def render() -> None:
     st.title(":material/play_circle: Guided demo")
-    st.write("The whole story in five clicks, using the Cessna 172 traffic circuit. Each step does the real "
-             "work — open the other pages at any time to look around.")
     prof = load_profile(PROFILE)
     if st.session_state.get("profile_name") != PROFILE:
-        st.info("The demo uses the ✈️ Air procedure; it has been selected for you.", icon=":material/info:")
         st.session_state["profile_name"] = PROFILE
-    results: dict = st.session_state.setdefault("demo_results", {})
+    st.write("The official documents are loaded first. Then add the instructor flights one at a time: after each "
+             "one the guidelines update and a review window shows what changed and why.")
+    log: dict = st.session_state.setdefault("demo_log", {})
+    docs = references.list_references(prof.procedure)
+    started = {d.id for d in docs} >= {"c172_poh", "aerodrome_sop", "faa_afh"}
 
-    started = bool(results) or not store.versions(prof.procedure)
     with st.container(border=True):
-        if store.versions(prof.procedure) and not results:
-            st.markdown(":material/warning: There is existing data for this procedure. Starting the demo clears it.")
-        if st.button("Start the demo from scratch" if not results else "Restart the demo",
-                     icon=":material/restart_alt:", type="secondary" if results else "primary"):
+        if started:
+            st.markdown(":green[:material/check_circle:] **Official documents loaded:** "
+                        + ", ".join(d.label for d in docs if d.kind != "notam"))
+            st.caption(f"{sum(len(d.limits) for d in docs)} hard limits and "
+                       f"{sum(len(d.requirements) for d in docs)} required actions in force.")
+        else:
+            st.markdown("**Step 0 · Load the official documents** — the Cessna 172 manual (POH), the aerodrome "
+                        "SOP and a flying handbook. They set the hard limits before any flight is added.")
+            if store.versions(prof.procedure) or storage.list_runs(prof.procedure):
+                st.caption(":material/warning: Starting the demo clears the existing data for this procedure.")
+        if st.button("Restart the demo" if started else "Start the demo", icon=":material/restart_alt:",
+                     type="secondary" if started else "primary"):
             _reset(prof)
             st.rerun()
     if not started:
         return
+    ui.pending_banner(prof, key="demo-review")
 
-    for i, (title, story, fn, page) in enumerate(STEPS):
-        done = i in results
-        ready = all(j in results for j in range(i))
+    next_i = next((i for i, it in enumerate(ITEMS) if not it.done(prof)), None)
+    for i, it in enumerate(ITEMS):
+        done = it.done(prof)
         with st.container(border=True):
-            mark = ":green[:material/check_circle:]" if done else ":gray[:material/radio_button_unchecked:]"
-            st.markdown(f"{mark} **Step {i + 1} · {title}**")
-            st.write(story)
+            mark = (":green[:material/check_circle:]" if done else
+                    ":blue[:material/arrow_circle_right:]" if i == next_i else ":gray[:material/radio_button_unchecked:]")
+            st.markdown(f"{mark} **{i + 1}. {it.title}**")
+            if done or i == next_i:
+                st.caption(it.story)
             if done:
-                for line in results[i]:
+                for line in log.get(i, []):
                     st.markdown(line)
-                ui.link_button(page, "See it", primary=False, key=f"demo-see-{i}")
-            elif ready and st.button(f"Run step {i + 1}", type="primary", icon=":material/play_arrow:",
-                                     key=f"demo-run-{i}"):
-                results[i] = fn(prof)
+            elif i == next_i and st.button(it.button, type="primary", icon=":material/play_arrow:", key=f"demo-{i}"):
+                before = store.latest(prof.procedure)
+                it.run(prof)
+                log[i] = _summary(prof, before.version if before else None)
                 st.rerun()
-    if len(results) == len(STEPS):
-        st.success("Demo complete. The Progress page shows the improvement version by version.",
+    if next_i is None:
+        st.success("Demo complete. The Progress page shows how the guidelines improved, version by version.",
                    icon=":material/celebration:")
         ui.link_button("progress", "Open Progress", key="demo-progress")

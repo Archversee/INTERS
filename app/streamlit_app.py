@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import streamlit as st
 import ui
-from views import demo, explorer, guidelines, home, progress, references_page, review, runs
+from views import demo, explorer, guidelines, home, progress, references_page, runs
 
 from sim2sop import config
 from sim2sop.profiles import list_profiles
@@ -21,7 +21,6 @@ ui.PAGES.update({
                           url_path="documents"),
     "guidelines": st.Page(guidelines.render, title="3 · Guidelines", icon=":material/checklist:",
                           url_path="guidelines"),
-    "review": st.Page(review.render, title="4 · Review changes", icon=":material/fact_check:", url_path="review"),
     "progress": st.Page(progress.render, title="Progress", icon=":material/trending_up:", url_path="progress"),
     "demo": st.Page(demo.render, title="Guided demo", icon=":material/play_circle:", url_path="demo"),
     "explorer": st.Page(explorer.render, title="Flight data explorer", icon=":material/monitoring:",
@@ -29,8 +28,8 @@ ui.PAGES.update({
 })
 nav = st.navigation({
     "": [ui.PAGES["home"]],
-    "Workflow": [ui.PAGES[k] for k in ("runs", "references", "guidelines", "review")],
-    "See the results": [ui.PAGES["progress"], ui.PAGES["demo"]],
+    "Workflow": [ui.PAGES[k] for k in ("runs", "references", "guidelines")],
+    "See the results": [ui.PAGES["demo"], ui.PAGES["progress"]],
     "Advanced": [ui.PAGES["explorer"]],
 })
 
@@ -61,4 +60,5 @@ with st.sidebar:
         st.caption("The AI only words the guidelines. Every number is checked against the flight data, "
                    "and limits always come from the official documents.")
 
+ui.show_queued()   # review popup / toast from the last action, on whatever page is open
 nav.run()

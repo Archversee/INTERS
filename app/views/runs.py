@@ -21,34 +21,38 @@ def render() -> None:
              "callouts. The more flights you add, the better the guidelines describe the typical technique.")
 
     runs = storage.list_runs(prof.procedure)
-    can_sample = prof.domain == "air"
-    remaining = [d for d in ui.sample_dirs(prof) if d.name not in {r.run_id for r in runs}] if can_sample else []
+    ui.pending_banner(prof, key="runs-review")
+    remaining = ui.remaining_samples(prof)
+    obstacle_left = ui.remaining_samples(prof, obstacle=True)
 
     with st.container(border=True):
-        st.markdown("**Add sample flights** (generated in the simulator's own data format)")
+        st.markdown("**Add sample flights** (generated in the simulator's own data format). "
+                    "The guidelines update straight after each flight and show you what changed.")
         c1, c2, c3 = st.columns(3)
-        if c1.button("Add 1 flight", icon=":material/add:", disabled=not remaining, width="stretch"):
-            ui.add_sample_flights(prof, 1)
+        if c1.button(f"Add {ui.run_title(remaining[0].name)}" if remaining else "All 5 flights added",
+                     icon=":material/add:", disabled=not remaining, width="stretch", type="primary"):
+            ui.add_flights(prof, remaining[:1])
             st.rerun()
-        if c2.button(f"Add all {len(remaining)} remaining" if remaining else "All 5 added",
-                     icon=":material/playlist_add:", disabled=not remaining, width="stretch"):
-            ui.add_sample_flights(prof)
+        if c2.button(f"Add all {len(remaining)} remaining" if len(remaining) > 1 else "Add all remaining",
+                     icon=":material/playlist_add:", disabled=len(remaining) < 2, width="stretch"):
+            ui.add_flights(prof, remaining)
             st.rerun()
-        obstacle_left = can_sample and any(d.name not in {r.run_id for r in runs} for d in ui.sample_dirs(prof, True))
-        if c3.button("Add 3 flights after a new obstacle", icon=":material/construction:",
-                     disabled=not obstacle_left, width="stretch",
-                     help="Instructors flying a wider circuit around a new crane (see the NOTAM document)."):
-            ui.add_sample_flights(prof, obstacle=True)
+        if c3.button(f"Add {ui.run_title(obstacle_left[0].name).lower()}" if obstacle_left
+                     else "All obstacle flights added", icon=":material/construction:",
+                     disabled=not obstacle_left or bool(remaining), width="stretch",
+                     help="Instructors flying a wider circuit around a new crane (add the NOTAM document too). "
+                          "Available once the 5 normal flights are in."):
+            ui.add_flights(prof, obstacle_left[:1])
             st.rerun()
-        if not can_sample:
+        if prof.domain != "air":
             st.caption("Sample flights are only available for the air procedure so far. Upload your own below.")
 
     with st.expander("Upload a recorded flight", icon=":material/upload:"):
         tele = st.file_uploader("Telemetry file from the simulator (CSV)", type=["csv", "parquet", "nmea", "log", "txt"])
         notes = st.file_uploader("Callouts (annotations.json, optional)", type=["json"])
         env = st.text_input("Conditions tag (optional)", placeholder="e.g. new-obstacle",
-                            help="Tag flights flown under new conditions. If 3 or more tagged flights consistently "
-                                 "differ, the next update treats it as a technique change.")
+                            help="Tag flights flown under new conditions. Once 3 tagged flights consistently "
+                                 "differ, the guidelines treat it as a technique change.")
         if tele is not None and st.button("Add this flight", type="primary"):
             with tempfile.TemporaryDirectory() as tmp:
                 d = Path(tmp)
@@ -56,12 +60,12 @@ def render() -> None:
                 if notes is not None:
                     (d / "annotations.json").write_bytes(notes.getvalue())
                 rec = ingest_run(d, prof, run_id=Path(tele.name).stem, environment=env or None)
-            st.success(f"Added {rec.run_id}: {len(rec.events)} actions found.")
+            ui.refresh_guidelines(prof, f"{rec.run_id} added")
             st.rerun()
 
     st.subheader(f"{len(runs)} flight{'s' if len(runs) != 1 else ''} recorded")
     if not runs:
-        st.info("No flights yet. Add one sample flight to start, then create guidelines from it.",
+        st.info("No flights yet. Add the first flight — the guidelines are created from it automatically.",
                 icon=":material/info:")
         return
     rows = []
@@ -79,7 +83,7 @@ def render() -> None:
             "Notes": ("Unmatched callout: " + "; ".join(f'"{u}"' for u in unmatched)) if unmatched else "",
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-    ui.link_button("guidelines", "Next: create or update the guidelines", key="runs-next")
+    ui.link_button("guidelines", "Open the guidelines", key="runs-next", primary=False)
 
     with st.expander("Start over", icon=":material/delete:"):
         st.write("Deletes all flights, guidelines, added documents and instructor corrections for this procedure.")
@@ -89,5 +93,6 @@ def render() -> None:
             references.clear_references(prof.procedure)
             shutil.rmtree(config.MEMORY_DIR, ignore_errors=True)
             ui.telemetry.clear()
-            st.session_state.pop("demo_results", None)
+            st.session_state.pop("demo_log", None)
+            st.session_state.pop("review_queue", None)
             st.rerun()

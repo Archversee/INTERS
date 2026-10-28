@@ -83,8 +83,8 @@ def detect_changes(previous: Guidelines, runs: list[RunRecord], profile: Profile
     if len(post) < need:
         report.pending = True
         report.flags.append(Flag(kind="technique_change", message=(
-            f"{len(post)} run(s) tagged '{env}' — need {need} consistent runs before treating "
-            f"differences as a technique change; held out of learning for now")))
+            f"{len(post)} of {need} flights in the new conditions ('{env}') so far — waiting for "
+            f"{need} that agree before changing the technique; held back until then")))
         return report
 
     items, _ = build_consensus(post)

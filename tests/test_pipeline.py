@@ -100,7 +100,7 @@ def test_obstacle_update_changes_only_downwind_and_base(data_dir, air_raw, obsta
     held = update_guidelines(p, LLM)  # only 2 runs: not enough to call it a technique change
     assert not any(s.change for s in held.steps if s.phase in ("downwind", "base") and
                    any("Technique change" in r for r in s.change_reasons))
-    assert any(f.kind == "technique_change" and "need 3" in f.message for f in held.flags)
+    assert any(f.kind == "technique_change" and "waiting for 3" in f.message for f in held.flags)
     approve(p)
 
     ingest_run(obstacle_raw[2], p)

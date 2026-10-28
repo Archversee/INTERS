@@ -121,7 +121,7 @@ If the provider is unreachable, the pipeline falls back to the template writer. 
 | [src/sim2sop/agent/](src/sim2sop/agent/) | LLM clients, planner, writer, verifier, LangGraph graph |
 | [src/sim2sop/pipeline.py](src/sim2sop/pipeline.py) | create / update / approve / edit, and the reason for each change |
 | [src/sim2sop/guidelines_store.py](src/sim2sop/guidelines_store.py) | Versions and step-level diff |
-| [app/](app/) | Streamlit app: Home → Instructor flights → Official documents → Guidelines → Review changes, plus Progress, Guided demo and a flight data explorer ([views/](app/views/), shared widgets in [ui.py](app/ui.py)) |
+| [app/](app/) | Streamlit app: Home → Instructor flights → Official documents → Guidelines (adding a flight or document updates the guidelines and pops up a review window), plus Guided demo, Progress and a flight data explorer ([views/](app/views/), shared widgets in [ui.py](app/ui.py)) |
 
 ## CLI
 

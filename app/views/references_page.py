@@ -12,6 +12,11 @@ from sim2sop import config, references
 from sim2sop.references import read_doc_meta
 
 
+def _added(prof, doc) -> None:
+    """A new document can change limits: re-check the guidelines (and pop up the review)."""
+    ui.refresh_guidelines(prof, f"{doc.label} added")
+
+
 def _limit_line(lim) -> str:
     where = f" · during {', '.join(ui.phase_title(p) for p in lim.phases)}" if lim.phases else ""
     return f"- {lim.text}{where}"
@@ -22,7 +27,9 @@ def render() -> None:
     st.title(":material/menu_book: Official documents")
     st.write("The aircraft manual (POH), standard operating procedures and NOTAMs are the authority. "
              "They set the **hard limits** the guidelines must stay inside. They are only read, never changed.")
-    st.caption("Optional: without them, guidelines are still created but marked *Unchecked*.")
+    st.caption("Optional: without them, guidelines are still created but marked *Unchecked*. "
+               "Adding a document re-checks the guidelines straight away.")
+    ui.pending_banner(prof, key="refs-review")
 
     docs = references.list_references(prof.procedure, active_only=False)
     added_ids = {d.id: d for d in docs if d.active}
@@ -44,7 +51,7 @@ def render() -> None:
                 if doc_id in added_ids:
                     st.markdown(":green[:material/check_circle: Added]")
                 elif st.button("Add", key=f"add-{path.name}", icon=":material/add:"):
-                    references.add_reference(prof.procedure, path)
+                    _added(prof, references.add_reference(prof.procedure, path))
                     st.rerun()
 
     with st.expander("Upload your own document", icon=":material/upload:"):
@@ -58,7 +65,8 @@ def render() -> None:
                 path.write_bytes(up.getvalue())
                 if lim is not None:
                     path.with_suffix(".limits.yaml").write_bytes(lim.getvalue())
-                references.add_reference(prof.procedure, path)
+                doc = references.add_reference(prof.procedure, path)
+            _added(prof, doc)
             st.rerun()
 
     active = [d for d in docs if d.active]
@@ -81,4 +89,4 @@ def render() -> None:
     old = [d for d in docs if not d.active]
     if old:
         st.caption("Replaced by newer revisions: " + ", ".join(d.label for d in old))
-    ui.link_button("guidelines", "Next: update the guidelines with these limits", key="refs-next")
+    ui.link_button("guidelines", "Open the guidelines", key="refs-next", primary=False)
