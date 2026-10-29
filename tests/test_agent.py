@@ -6,7 +6,7 @@ from sim2sop.agent.graph import build_graph
 from sim2sop.agent.llm import LLMClient, LLMReply, LLMUnreachable, ToolCall, get_llm
 from sim2sop.agent.planner import plan
 from sim2sop.agent.verifier import verify_step
-from sim2sop.agent.writer import LLMWriter
+from sim2sop.agent.writer import LLMWriter, _restates
 from sim2sop.ingest import ingest_run
 from sim2sop.learn import memory
 from sim2sop.learn.consensus import typical_range
@@ -165,3 +165,17 @@ def test_correction_pattern_round_trip():
     other = {"result.ias_kt": Fact(signal="ias_kt", value=72.0, lo=70, hi=74, unit="kt")}
     assert memory.fill_pattern(pattern, other, "Flaps 20°", None) == "Select Flaps 20°, hold 72 kt (70–74)."
     assert memory.fill_pattern(pattern, {}, "Flaps 20°", None) is None
+
+
+def test_trigger_that_repeats_the_action_is_caught():
+    assert _restates("Flaps 20°", "Set flaps to 20°", "Flaps 20°")
+    assert _restates("Turn right to heading 28°", "Turn right to heading 28°", "Turn right to heading 28°")
+    assert not _restates("IAS 80 kt", "Set flaps to 20°", "Flaps 20°")
+    assert not _restates(None, "Set flaps to 20°", "Flaps 20°")
+
+
+def test_typical_range_stays_on_the_side_of_zero_the_flights_were_on():
+    _, lo, _ = typical_range([0.0, 0.4, 1.0], default_tol=5)
+    assert lo == 0.0
+    _, _, hi = typical_range([-700.0, -650.0, -600.0], default_tol=150)
+    assert hi <= 0.0

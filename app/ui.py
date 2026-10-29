@@ -86,8 +86,13 @@ def phase_title(name: str) -> str:
 def run_title(run_id: str) -> str:
     n = run_id.rsplit("_", 1)[-1]
     if run_id.startswith("generated_"):
-        return f"Generated flight #{n}"
+        return f"Generated flight (seed {n})"
     return f"Flight {int(n)}" if n.isdigit() else run_id
+
+
+def instructor_name(raw: str | None) -> str:
+    """"instructor_3" -> "Instructor 3"; no name (or the generator's placeholder) -> "—"."""
+    return "—" if raw in (None, "", "generated") else raw.replace("_", " ").title()
 
 
 def mode_title(doc: Guidelines) -> str:
@@ -116,6 +121,40 @@ def generated_dir(prof: Profile) -> Path:
     return config.RAW_DIR / "generated" / prof.domain
 
 
+def sample_dir(prof: Profile) -> Path:
+    return config.RAW_DIR / "sample" / prof.domain
+
+
+def start_over(prof: Profile) -> None:
+    """Delete everything for the procedure, behind a confirmation (sidebar popover)."""
+    st.caption("Deletes every flight, guideline version, official document, instructor correction and "
+               "generated flight for this procedure.")
+    rules = st.checkbox("Load the sample official rules again (POH and aerodrome SOP)", value=True,
+                        key="reset-rules", help="Start with the hard limits already in place, ready for the first flight.")
+    sure = st.checkbox("Yes, delete all the data", key="reset-sure")
+    if st.button("Delete all data", type="primary", icon=":material/delete_forever:", disabled=not sure,
+                 key="reset-go", width="stretch"):
+        reset_all(prof, load_rules=rules)
+        st.session_state["toast"] = "All data deleted." + (" Sample official rules loaded." if rules else "")
+        st.rerun()
+
+
+def load_sample(prof: Profile) -> None:
+    """First-run shortcut: the sample official documents and five generated instructor
+    flights, then the guidelines are created and the review pops up."""
+    from sim2sop.generate.air import generate_air_runs
+    from sim2sop.ingest import ingest_run
+
+    added = {d.id for d in references.list_references(prof.procedure)}
+    for path in sorted((config.REFERENCES_DIR / prof.references).glob("*.md")):
+        if path.name.lower() != "readme.md" and references.read_doc_meta(path).get("id") not in added:
+            references.add_reference(prof.procedure, path)
+    with st.spinner("Generating five instructor flights…"):
+        for run_dir in generate_air_runs(sample_dir(prof), n=5):
+            ingest_run(run_dir, prof)
+    refresh_guidelines(prof, "Sample data loaded: 5 flights and the official documents")
+
+
 def reset_all(prof: Profile, load_rules: bool = True) -> None:
     """Delete every flight, guideline version, document, correction and generated flight for
     the procedure; optionally load the sample official rules again."""
@@ -124,6 +163,7 @@ def reset_all(prof: Profile, load_rules: bool = True) -> None:
     references.clear_references(prof.procedure)
     shutil.rmtree(config.MEMORY_DIR, ignore_errors=True)
     shutil.rmtree(generated_dir(prof), ignore_errors=True)
+    shutil.rmtree(sample_dir(prof), ignore_errors=True)
     telemetry.clear()
     for k in ("review_queue", "gen_current"):
         st.session_state.pop(k, None)
@@ -198,7 +238,7 @@ def _dismiss_review() -> None:
 
 
 def _is_important(s: Step) -> bool:
-    return s.change == "added" or any(r.startswith(IMPORTANT) for r in s.change_reasons)
+    return s.change in ("added", "moved") or any(r.startswith(IMPORTANT) for r in s.change_reasons)
 
 
 def _decision(s: Step, version: int) -> str:
@@ -234,14 +274,13 @@ def review_dialog(version: int, title: str) -> None:
                   type="primary", icon=":material/done_all:", key="pub-all", width="stretch"):
         _publish(prof, doc, rejects)
     _review_summary(doc, prev)
-    capped = [f.message for f in doc.flags if f.kind == "clipped"]
-    if capped:
-        st.warning("**Capped at an official limit:** " + " ".join(capped), icon=":material/vertical_align_top:")
+    _capped(doc, prev, prof)
+    _cited(doc, prev)
 
     if prev is None:
         st.markdown(f"**{len(doc.steps)} new guidelines** from {len(doc.runs)} flight"
-                    f"{'s' if len(doc.runs) != 1 else ''}. Read through and publish.")
-        with st.expander("See all guidelines"):
+                    f"{'s' if len(doc.runs) != 1 else ''}. Read them through, then publish.")
+        with st.expander("All guidelines", expanded=True):
             for phase in doc.phases:
                 steps = doc.steps_in(phase)
                 if steps:
@@ -249,7 +288,8 @@ def review_dialog(version: int, title: str) -> None:
     else:
         slot_of = {s.id: k for k, s in step_slots(doc.steps).items()}
         prev_slots = step_slots(prev.steps)
-        important = [s for s in doc.pending if _is_important(s)]
+        # Values capped at a limit first: they are what a reviewer most needs to see.
+        important = sorted((s for s in doc.pending if _is_important(s)), key=lambda s: not _is_capped(s))
         routine = [s for s in doc.pending if not _is_important(s)]
         st.markdown(f"**{len(doc.pending)} guideline{'s' if len(doc.pending) != 1 else ''} changed.** "
                     "Everything is approved unless you mark it *Reject* (keeps the previous version).")
@@ -262,7 +302,9 @@ def review_dialog(version: int, title: str) -> None:
                     _decision(s, version)
                 st.markdown("\n".join(f"- {r}" for r in s.change_reasons))
                 old = prev_slots.get(slot_of[s.id])
-                if old is not None:
+                if s.change == "moved":
+                    old = next((o for o in prev.steps if o.key == s.key and o.phase == s.moved_from), None)
+                if old is not None and any((getattr(old, f) or "") != (getattr(s, f) or "") for f, _ in FIELDS):
                     _before_after(old, s)
                 else:
                     guideline_body(s, doc)
@@ -287,29 +329,76 @@ def _publish(prof: Profile, doc: Guidelines, rejects: list[str]) -> None:
 
 
 def _review_summary(doc: Guidelines, prev: Guidelines | None) -> None:
-    """The headline numbers of the new version."""
+    """The headline numbers of the new version (no arrow when nothing moved)."""
     m, pm = doc.metrics, prev.metrics if prev else {}
+    new_flights = len(doc.runs) - len(prev.runs) if prev else 0
+    pts = round((m["mean_confidence"] - pm["mean_confidence"]) * 100) if pm else 0
     c = st.columns(3)
-    c[0].metric("Flights", len(doc.runs), f"+{len(doc.runs) - len(prev.runs)}" if prev else None)
-    c[1].metric("Guidelines changed", len(doc.pending))
-    c[2].metric("Confidence", f"{m['mean_confidence']:.0%}",
-                f"{(m['mean_confidence'] - pm['mean_confidence']) * 100:+.0f} pts" if pm else None)
+    c[0].metric("Flights", len(doc.runs), f"+{new_flights}" if new_flights else None)
+    c[1].metric("Guidelines changed" if prev else "New guidelines", len(doc.pending))
+    c[2].metric("Confidence", f"{m['mean_confidence']:.0%}", f"{pts:+d} pts" if pts else None)
+
+
+def _is_capped(s: Step) -> bool:
+    return any(f.clipped for f in s.facts.values())
+
+
+def _capped(doc: Guidelines, prev: Guidelines | None, prof: Profile) -> None:
+    """In plain words: each value this version caps at an official limit, and each new
+    flight that broke a limit (left out of the typical range)."""
+    by_id = {s.id: s for s in doc.steps}
+    for s in doc.pending:
+        broke = [run_title(f.run_id) for f in doc.flags if f.kind == "clipped" and f.step_id == s.id and f.run_id]
+        for f in (f for f in s.facts.values() if f.clipped):
+            lim = next((x for x in s.limits if x.signal == f.signal), None)
+            source = f" — *{lim.text}* ({lim.doc_title})" if lim else ""
+            st.error(f"**{phase_title(s.phase)} · {s.label}:** typical {prof.label(f.signal)} capped at "
+                     f"**{f.fmt()}**{source}." + (f"  \nFlown past the limit in: {', '.join(broke)}." if broke else ""),
+                     icon=":material/vertical_align_top:")
+    known = set(prev.runs) if prev else set()
+    for f in doc.flags:
+        s = by_id.get(f.step_id or "")
+        if f.kind == "excluded" and f.run_id not in known and s is not None:
+            lim = next((x for x in s.limits if x.text in f.message), None)
+            st.error(f"**{phase_title(s.phase)} · {s.label}:** {run_title(f.run_id)} broke a hard limit"
+                     + (f" — *{lim.text}* ({lim.doc_title})" if lim else "")
+                     + ". It is left out of the typical range.", icon=":material/remove_circle:")
+
+
+def _cited(doc: Guidelines, prev: Guidelines | None) -> None:
+    """Steps that only gained a citation: their wording did not change, so nothing to review."""
+    if prev is None:
+        return
+    old = {k: s.reference and s.reference.doc for k, s in step_slots(prev.steps).items()}
+    cited = [s.reference.doc for k, s in step_slots(doc.steps).items()
+             if s.review != "pending" and s.reference and s.reference.doc != old.get(k)]
+    if cited:
+        n = len(cited)
+        st.caption(f":material/menu_book: {n} other guideline{'s now cite' if n != 1 else ' now cites'} "
+                   f"{', '.join(sorted(set(cited)))}. The wording is unchanged, so there is nothing to review.")
 
 
 # --- guideline card -----------------------------------------------------------------------------
 
-def step_badges(s: Step) -> str:
+def _change_badge(s: Step) -> str | None:
+    if s.change == "moved":
+        return f":violet-badge[Moved from {phase_title(s.moved_from or '')}]"
+    return {"added": ":violet-badge[New]", "modified": ":violet-badge[Changed]"}.get(s.change or "")
+
+
+def step_badges(s: Step, show_change: bool = True) -> str:
+    """`show_change` is off on a first version, where every step is new."""
     out = []
     if s.required_by:
         out.append(":green-badge[Required by SOP]")
+    elif s.run_count < 2:
+        out.append(":gray-badge[Seen in 1 flight]")
     elif s.mandatory:
         out.append(":blue-badge[Core — every instructor]")
     else:
         out.append(f":orange-badge[Technique — {s.seen_in} of {s.run_count} instructors]")
-    if s.change == "added":
-        out.append(":violet-badge[New]")
-    elif s.change == "modified":
-        out.append(":violet-badge[Changed]")
+    if show_change and (badge := _change_badge(s)):
+        out.append(badge)
     if s.review == "pending":
         out.append(":orange-badge[Awaiting approval]")
     if s.edited:
@@ -326,12 +415,8 @@ def guideline_body(s: Step, doc: Guidelines) -> None:
     for icon, label, text in rows:
         if text:
             st.markdown(f"{icon} **{label}** — {text}")
-    if s.limit:
+    if s.limit:   # "Unchecked" is shown once at the top of the page, not on every step
         st.markdown(f":red[:material/block: **Hard limit** — {s.limit}]")
-    elif doc.checked:
-        st.caption(":material/block: No hard limit in the official documents for this step.")
-    else:
-        st.caption(":material/gpp_maybe: Not checked — no official documents added yet.")
 
 
 def limit_badges(s: Step, prof: Profile) -> str:
@@ -363,17 +448,18 @@ def when_text(lim, prof: Profile) -> str:
     return " · ".join(parts) or "Always"
 
 
-def checklist_line(n: int, s: Step, prof: Profile) -> str:
+def checklist_line(n: int, s: Step, prof: Profile, show_change: bool = True) -> str:
     """One line per step: what to do, when, and the hard limit."""
     when = (s.trigger or "").rstrip(".")
-    when = when[:1].lower() + when[1:]
+    if when[1:2].islower():   # "At about…" -> "at about…", but keep "IAS 70 kt"
+        when = when[:1].lower() + when[1:]
     tags = []
     if s.required_by:
         tags.append(":green-badge[Required]")
     elif not s.mandatory:
         tags.append(f":orange-badge[Technique · {s.seen_in}/{s.run_count}]")
-    if s.change:
-        tags.append(":violet-badge[New]" if s.change == "added" else ":violet-badge[Changed]")
+    if show_change and (badge := _change_badge(s)):
+        tags.append(badge)
     line = f"{n}. **{s.action.rstrip('.')}**" + (f" — {when}" if when else "")
     return " ".join([line, limit_badges(s, prof), *tags]).strip()
 
@@ -394,15 +480,17 @@ def step_chart(s: Step, doc: Guidelines, prof: Profile) -> None:
     fig = go.Figure(go.Scatter(x=window["t"] - s.t, y=window[sig], name=prof.label(sig),
                                line=dict(width=3)))
     fact = s.facts.get(f"trigger.{sig}")
+    limits = []
     if fact and fact.lo is not None:
         fig.add_hrect(y0=fact.lo, y1=fact.hi, opacity=0.18, line_width=0, fillcolor="green",
                       annotation_text="typical range", annotation_position="top left")
-        for lim in (fact.limit_max, fact.limit_min):
-            if lim is not None:
-                fig.add_hline(y=lim, line_color="red", line_dash="dot", annotation_text="hard limit")
+        limits = [x for x in (fact.limit_max, fact.limit_min) if x is not None]
+        for lim in limits:
+            fig.add_hline(y=lim, line_color="red", line_dash="dot", annotation_text="hard limit")
     fig.add_vline(x=0, line_dash="dash", annotation_text="action")
     unit = prof.unit(sig) or ""
     fig.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
                       xaxis_title="seconds from the action", yaxis_title=f"{prof.label(sig)} ({unit})")
     st.plotly_chart(fig, width="stretch")
-    st.caption(f"From {run_title(run_id)}. Green band = what instructors typically do; red line = official limit.")
+    st.caption(f"From {run_title(run_id)}. Green band = what instructors typically do"
+               + ("; red line = official limit." if limits else "."))

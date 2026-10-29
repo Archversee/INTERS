@@ -17,9 +17,9 @@ st.set_page_config(page_title="Sim-to-SOP", page_icon=":material/flight_takeoff:
 ui.PAGES.update({
     "home": st.Page(home.render, title="Home", icon=":material/home:", url_path="home", default=True),
     "runs": st.Page(runs.render, title="1 · Instructor flights", icon=":material/flight:", url_path="flights"),
-    "references": st.Page(references_page.render, title="Official documents", icon=":material/menu_book:",
+    "references": st.Page(references_page.render, title="2 · Official documents", icon=":material/menu_book:",
                           url_path="documents"),
-    "guidelines": st.Page(guidelines.render, title="2 · Guidelines", icon=":material/checklist:",
+    "guidelines": st.Page(guidelines.render, title="3 · Guidelines", icon=":material/checklist:",
                           url_path="guidelines"),
     "progress": st.Page(progress.render, title="Progress", icon=":material/trending_up:", url_path="progress"),
     "generator": st.Page(generator.render, title="Flight generator", icon=":material/science:",
@@ -29,8 +29,7 @@ ui.PAGES.update({
 })
 nav = st.navigation({
     "": [ui.PAGES["home"]],
-    "Workflow": [ui.PAGES[k] for k in ("runs", "guidelines")],
-    "Rules": [ui.PAGES["references"]],
+    "Workflow": [ui.PAGES[k] for k in ("runs", "references", "guidelines")],
     "See the results": [ui.PAGES["progress"]],
     "Tools": [ui.PAGES["generator"], ui.PAGES["explorer"]],
 })
@@ -61,6 +60,8 @@ with st.sidebar:
             st.text_input("Model", key="llm_model")
         st.caption("The AI only words the guidelines. Every number is checked against the flight data, "
                    "and limits always come from the official documents.")
+    with st.popover("Start over", icon=":material/restart_alt:", width="stretch"):
+        ui.start_over(ui.profile())
 
 ui.show_queued()   # review popup / toast from the last action, on whatever page is open
 nav.run()

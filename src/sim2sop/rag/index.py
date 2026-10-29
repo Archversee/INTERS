@@ -157,6 +157,12 @@ class ReferenceIndex:
                          text=self.chunks[i].text, score=round(float(scores[i]), 3))
                 for i in order if scores[i] > 0]
 
-    def best(self, query: str, min_score: float = 0.12) -> Citation | None:
-        hits = self.search(query, k=1)
-        return hits[0] if hits and hits[0].score >= min_score else None
+    def best(self, query: str, min_score: float = 0.12, phase: str | None = None) -> Citation | None:
+        """The best section, preferring one about the step's own phase ("Final approach"
+        for a final step) over a close match from another phase."""
+        hits = [h for h in self.search(query, k=5) if h.score >= min_score]
+        if not hits:
+            return None
+        want = set(_tokens(phase.replace("_", " "))) if phase else set()
+        same = [h for h in hits if want & set(_tokens(h.section or "")) and h.score >= 0.5 * hits[0].score]
+        return same[0] if same else hits[0]

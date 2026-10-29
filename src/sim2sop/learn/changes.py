@@ -109,12 +109,12 @@ def detect_changes(previous: Guidelines, runs: list[RunRecord], profile: Profile
                 change = report.changed.setdefault(prev.phase, PhaseChange(prev.phase))
                 change.shifts.append(
                     f"{prev.label}: {profile.label(f.signal)} {f.fmt_range()} → "
-                    f"{f.fmt(float(np.median(vals)))} in {len(vals)}/{len(post)} '{env}' runs")
+                    f"{f.fmt(float(np.median(vals)))} in {len(vals)} of {len(post)} '{env}' flights")
     for ph in report.changed.values():
         report.flags.append(Flag(kind="technique_change", phase=ph.phase, message=(
             f"Technique change in {ph.phase} after '{env}': " + "; ".join(ph.shifts[:3])
             + (f" (+{len(ph.shifts) - 3} more)" if len(ph.shifts) > 3 else ""))))
     if not report.changed:
         report.flags.append(Flag(kind="technique_change", message=(
-            f"{len(post)} runs tagged '{env}' match the current guidelines; added as normal runs")))
+            f"{len(post)} flights tagged '{env}' match the current guidelines; added as normal flights")))
     return report

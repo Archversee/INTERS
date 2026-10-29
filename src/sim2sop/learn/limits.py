@@ -17,6 +17,7 @@ limits, and global ones (e.g. Vne) only when the step's values come within 20 % 
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -25,6 +26,7 @@ from sim2sop.schema import Event, Fact, Limit
 
 WHERE = ("trigger", "result")
 NEAR = 0.2
+NAME_RE = re.compile(r"[A-Za-z_]\w*")
 
 
 def _eval(expr: str, state: dict[str, float]) -> bool:
@@ -62,20 +64,26 @@ class StepLimits:
 
 
 def applicable(limits: list[Limit], phase: str, events: list[Event]) -> StepLimits:
-    """Limits that apply to a step, judged on the median trigger / result state of its events."""
+    """Limits that apply to a step, judged on the median trigger / result state of its events.
+    A condition that only becomes true after the step (flaps lowered just after a power
+    change) belongs to the step that changed it, not to this one."""
     out = StepLimits()
     if not events:
         return out
+    states = {}
     for where in WHERE:
         snaps = [snapshot(e, where) for e in events]
         keys = {k for s in snaps for k in s}
-        state = {k: float(np.median([s[k] for s in snaps if k in s])) for k in keys}
+        states[where] = state = {k: float(np.median([s[k] for s in snaps if k in s])) for k in keys}
         for lim in limits:
             if lim.phases and phase not in lim.phases:
                 continue
             if lim.at not in (where, "both"):
                 continue
             if lim.when and not _eval(lim.when, state):
+                continue
+            if (where == "result" and lim.when and events[0].signal not in NAME_RE.findall(lim.when)
+                    and not _eval(lim.when, states["trigger"])):
                 continue
             out.at(where).append(lim)
     return out

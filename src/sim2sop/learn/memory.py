@@ -73,6 +73,12 @@ def relevant_count(domain: str, step_kind: str, step_signal: str) -> int:
                if c.domain == domain and c.step_kind == step_kind and _signal_of(c.step_key) == step_signal)
 
 
+def corrected_fields(domain: str, step_kind: str, step_signal: str) -> list[str]:
+    """The fields those corrections changed: only these are restyled on similar steps."""
+    return sorted({c.field for c in all_corrections()
+                   if c.domain == domain and c.step_kind == step_kind and _signal_of(c.step_key) == step_signal})
+
+
 # --- learned patterns for the template writer ---------------------------------------------
 
 def to_pattern(text: str, facts: dict[str, Fact], label: str | None = None,

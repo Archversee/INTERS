@@ -82,17 +82,42 @@ class TemplateWriter:
             "typical": typical,
             "limit": limit_text(step),
         }
-        # Learned wording from instructor corrections on the same kind of step. Merged steps
-        # ("Flaps UP; Landing light OFF") only take corrections made on that exact step.
-        for field in EDITABLE:
-            for c in memory.retrieve(p.domain, p.procedure, step.phase, step.kind, step.key, field=field):
-                same_kind = memory._signal_of(c.step_key) == step.signal and "+" not in step.key
-                if c.pattern and (c.step_key == step.key or same_kind):
-                    filled = memory.fill_pattern(c.pattern, step.facts, step.label, step.intent)
-                    if filled:
-                        out[field] = filled
-                        break
-        return out
+        return apply_learned(out, p, step)
+
+
+def learned(profile: Profile, step: Step, field: str) -> str | None:
+    """Wording learned from instructor corrections on the same kind of step. Merged steps
+    ("Flaps UP; Landing light OFF") only take corrections made on that exact step, and a
+    correction that kept a literal number ("Select Flaps 10°" where the label was not
+    recognised) is never copied onto another step."""
+    for c in memory.retrieve(profile.domain, profile.procedure, step.phase, step.kind, step.key, field=field):
+        portable = "{" in (c.pattern or "") or not any(ch.isdigit() for ch in c.pattern or "")
+        same_kind = memory._signal_of(c.step_key) == step.signal and "+" not in step.key and portable
+        if c.pattern and (c.step_key == step.key or same_kind):
+            filled = memory.fill_pattern(c.pattern, step.facts, step.label, step.intent)
+            if filled:
+                return filled
+    return None
+
+
+def apply_learned(out: dict[str, str | None], profile: Profile, step: Step) -> dict[str, str | None]:
+    """Instructor corrections are the house style: they win over any writer's wording."""
+    for field in EDITABLE:
+        if filled := learned(profile, step, field):
+            out[field] = filled
+    return out
+
+
+def rewrite_fields(step: Step, fields: list[str], profile: Profile) -> dict[str, str | None]:
+    """Only the parts that changed, keeping the rest of the step's text: the quoted hard
+    limit, and fields restyled by an instructor correction."""
+    out: dict[str, str | None] = {}
+    for field in fields:
+        if field == "limit":
+            out["limit"] = limit_text(step)
+        elif field in EDITABLE and (filled := learned(profile, step, field)):
+            out[field] = filled
+    return out
 
 
 SYSTEM_PROMPT = """You write one step of advisory flight-training GUIDELINES from verified simulator telemetry.
@@ -101,9 +126,10 @@ Guidelines describe how experienced instructors do it; the reference SOPs set ha
 Rules:
 - Use ONLY numbers that appear in FACTS (typical value or range ends, rounded to the precision shown) or in the step label. Never invent numbers.
 - Never state a value past a HARD LIMIT shown in FACTS.
-- trigger: when to act. action: what to do, imperative voice, keep the step label's wording.
+- trigger: when to act: the condition to watch (airspeed, height, position, a callout). Never just repeat the action.
+- action: what to do, imperative voice, keep the step label's wording.
 - intent: why, based on the instructor's callout; null if there is none.
-- typical: the range instructors typically use, from the FACTS ranges.
+- typical: the range instructors typically use, written as a range ("lo–hi unit") whenever FACTS give one.
 - limit: copy LIMITS verbatim, or "" if there are none.
 - Follow the instructor corrections shown: they are the house style.
 - Reply with one JSON object with keys: trigger, action, intent, typical, limit.
@@ -178,4 +204,16 @@ class LLMWriter:
             return self.fallback.write(step, feedback)
         out = {f: (str(data[f]).strip() if data.get(f) not in (None, "") else None) for f in FIELDS}
         out["limit"] = limit_text(step)  # limits are quoted from the reference, not model-written
-        return out
+        if _restates(out["trigger"], out["action"], step.label):
+            out["trigger"] = self.fallback.write(step)["trigger"]   # "when" must be a condition, not the action
+        return apply_learned(out, self.profile, step)
+
+
+def _plain(text: str | None) -> str:
+    return "".join(ch for ch in (text or "").lower() if ch.isalnum())
+
+
+def _restates(trigger: str | None, action: str | None, label: str) -> bool:
+    """A trigger that only repeats the action ("Flaps 20°" — "Flaps 20°") says nothing about when."""
+    t = _plain(trigger)
+    return bool(t) and (t in _plain(action) or t in _plain(label))

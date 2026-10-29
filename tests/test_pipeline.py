@@ -174,3 +174,80 @@ def test_generated_flight_follows_the_chosen_technique(data_dir, tmp_path):
     assert any("Checking for traffic" in f.message for f in rec_fast.flags)
     assert not any("Checking for traffic" in f.message for f in rec_calm.flags)
     assert not storage.list_runs(p.procedure)  # preview only
+
+
+def test_correction_restyles_only_the_corrected_field(data_dir, air_raw):
+    p = load_profile(PROFILE)
+    for d in air_raw:
+        ingest_run(d, p)
+    v1 = create_guidelines(p, LLM)
+    approve(p)
+    flaps10 = next(s for s in v1.steps if s.key == "toggle:flaps_idx:1")
+    apply_edit(p, flaps10.id, "action", f"Select {flaps10.label}, then check the indicator.")
+    v3 = update_guidelines(p, LLM)
+    for key in ("toggle:flaps_idx:2", "toggle:flaps_idx:3"):
+        old = next(s for s in v1.steps if s.key == key)
+        new = next(s for s in v3.steps if s.key == key)
+        assert new.action == f"Select {new.label}, then check the indicator."
+        assert (new.trigger, new.intent, new.typical, new.limit) == (old.trigger, old.intent, old.typical, old.limit)
+    # Merged steps (flaps up + lights off) take no restyle from a single-switch correction.
+    assert all(s.change is None for s in v3.steps if "+" in s.key)
+
+
+def test_rejected_change_is_not_proposed_again(data_dir, air_raw):
+    p = load_profile(PROFILE)
+    ingest_run(air_raw[0], p)
+    create_guidelines(p, LLM)
+    approve(p)
+    for d in air_raw[1:]:
+        ingest_run(d, p)
+    v = update_guidelines(p, LLM)
+    added = [s for s in v.pending if s.change == "added"]
+    assert added
+    published = approve(p, reject_ids=[added[0].id])
+    apply_edit(p, v.steps[0].id, "intent", "Edited.")  # any later version
+    again = update_guidelines(p, LLM)
+
+    def same_key(doc):
+        return [s.label for s in doc.steps if s.key == added[0].key and s.phase == added[0].phase]
+    assert same_key(again) == same_key(published) and len(same_key(published)) == len(same_key(v)) - 1
+    assert not again.pending
+
+
+def test_guidance_document_changes_no_wording(data_dir, air_raw, refs_dir):
+    p = load_profile(PROFILE)
+    for f in BASE_REFS[:2]:
+        references.add_reference(p.procedure, refs_dir / f)
+    for d in air_raw:
+        ingest_run(d, p)
+    v1 = create_guidelines(p, LLM)
+    approve(p)
+    references.add_reference(p.procedure, refs_dir / BASE_REFS[2])  # handbook: citations only, no limits
+    v2 = update_guidelines(p, LLM)
+    assert not v2.pending
+    assert sum(s.reference is not None for s in v2.steps) >= sum(s.reference is not None for s in v1.steps)
+
+
+def test_conditional_limit_belongs_to_the_step_that_enters_it(data_dir, air_raw, refs_dir):
+    p = load_profile(PROFILE)
+    references.add_reference(p.procedure, refs_dir / BASE_REFS[0])
+    for d in air_raw:
+        ingest_run(d, p)
+    v = create_guidelines(p, LLM)
+    flaps10 = next(s for s in v.steps if s.key == "toggle:flaps_idx:1")
+    assert "vfe_10" in {lim.id for lim in flaps10.limits}
+    before = [s for s in v.steps if s.phase == flaps10.phase and s.t < flaps10.t and s.signal != "flaps_idx"]
+    assert before and not any("vfe_10" in {lim.id for lim in s.limits} for s in before)
+
+
+def test_correction_with_a_literal_number_stays_on_its_own_step(data_dir, air_raw):
+    p = load_profile(PROFILE)
+    for d in air_raw:
+        ingest_run(d, p)
+    v1 = create_guidelines(p, LLM)
+    approve(p)
+    flaps10 = next(s for s in v1.steps if s.key == "toggle:flaps_idx:1")
+    apply_edit(p, flaps10.id, "action", "Select flaps ten degrees (10), then check.")  # label not recognisable
+    v3 = update_guidelines(p, LLM)
+    flaps20 = next(s for s in v3.steps if s.key == "toggle:flaps_idx:2")
+    assert "10" not in flaps20.action and flaps20.change is None

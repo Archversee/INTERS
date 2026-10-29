@@ -183,7 +183,11 @@ def typical_range(values: list[float], default_tol: float | None,
         half = 2 * sigma
     else:
         half = max((default_tol + (n - 1) * 2 * sigma) / n, 0.2 * default_tol)
-    return centre, centre - half, centre + half
+    lo, hi = centre - half, centre + half
+    if not angle:   # no flight below zero (airspeed at a standstill): neither is the typical range
+        lo = max(lo, 0.0) if x.min() >= 0 else lo
+        hi = min(hi, 0.0) if x.max() <= 0 else hi
+    return centre, lo, hi
 
 
 def item_facts(item: ConsensusItem, profile: Profile, exclude: set[str] = frozenset()) -> dict[str, Fact]:

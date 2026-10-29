@@ -72,8 +72,8 @@ def _upload(prof) -> None:
                 title = f"{ui.run_title(added[0])} added" if len(added) == 1 else f"{len(added)} flights added"
                 ui.refresh_guidelines(prof, title)
                 st.rerun()
-        st.caption("Need data? Make a flight in the **Flight generator** and download it. The file format is "
-                   "explained there too.")
+        st.caption("Need data? Make a flight in the **Flight generator** and add it from there. The file "
+                   "format is explained there too.")
         ui.link_button("generator", "Open the Flight generator", icon=":material/science:", key="runs-gen",
                        primary=False)
 
@@ -99,7 +99,7 @@ def render() -> None:
         mins, secs = divmod(int(r.meta.duration_s), 60)
         rows.append({
             "Flight": ui.run_title(r.run_id),
-            "Instructor": (r.meta.instructor or "—").replace("_", " ").title(),
+            "Instructor": ui.instructor_name(r.meta.instructor),
             "Length": f"{mins}:{secs:02d}",
             "Actions found": len(r.events),
             "Callouts matched": f"{matched} of {len(r.annotations)}",

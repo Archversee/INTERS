@@ -18,7 +18,7 @@ import ui
 from sim2sop import config, references, storage
 from sim2sop.adapters.msfs import SIMVARS
 from sim2sop.generate.air import generate_flight
-from sim2sop.ingest import analyse_run
+from sim2sop.ingest import analyse_run, ingest_run
 from sim2sop.profiles import Profile
 from sim2sop.signals.compliance import check_run
 
@@ -204,7 +204,7 @@ def _rundown(prof: Profile, run_dir: Path) -> None:
 
     with st.container(border=True):
         st.markdown(f"**2 · What's in this flight — {ui.run_title(run_dir.name)}**")
-        st.caption(f"Instructor: {meta.get('instructor', '—').replace('_', ' ').title()} · seed {meta.get('seed')}")
+        st.caption(f"Instructor: {ui.instructor_name(meta.get('instructor'))} · seed {meta.get('seed')}")
         m = st.columns(4)
         m[0].metric("Length", _mmss(record.meta.duration_s))
         m[1].metric("Data points", f"{record.meta.n_samples:,}", help=f"{prof.sample_hz} per second")
@@ -253,15 +253,17 @@ def _rundown(prof: Profile, run_dir: Path) -> None:
             t2.json(json.loads((run_dir / "annotations.json").read_text(encoding="utf-8")), expanded=False)
             t3.json(meta)
 
-        if added:
-            st.caption(":green[:material/check_circle:] This flight has been uploaded.")
-        else:
-            st.caption("To add it to the guidelines, download the zip and upload it on *1 · Instructor flights*.")
         b1, b2, b3 = st.columns(3)
-        b1.download_button("Download (zip)", _zip(run_dir), file_name=f"{run_dir.name}.zip", type="primary",
-                           mime="application/zip", icon=":material/download:", width="stretch")
-        with b2:
-            ui.link_button("runs", "Go to upload", icon=":material/upload:", primary=False, key="gen-upload")
+        if added:
+            b1.markdown(":green[:material/check_circle:] Added to the guidelines.")
+        elif b1.button("Add to the guidelines", type="primary", icon=":material/add_task:", width="stretch",
+                       help="The guidelines update straight away and show you what changed."):
+            ingest_run(run_dir, prof)
+            ui.refresh_guidelines(prof, f"{ui.run_title(run_dir.name)} added")
+            st.rerun()
+        b2.download_button("Download (zip)", _zip(run_dir), file_name=f"{run_dir.name}.zip",
+                           mime="application/zip", icon=":material/download:", width="stretch",
+                           help="The flight in the simulator's file format: an example to upload, or to keep.")
         if b3.button("Discard", icon=":material/delete:", width="stretch",
                      help="Delete the generated files (flights already uploaded stay)."):
             shutil.rmtree(run_dir, ignore_errors=True)
@@ -317,7 +319,7 @@ def render() -> None:
     prof = ui.profile()
     st.title(":material/science: Flight generator")
     st.write("Make a random instructor flight in the simulator's own data format, see what's in it, then add it "
-             "to the guidelines — or download it as an example of what a recording should look like.")
+             "to the guidelines with one click — or download it as an example of what a recording should look like.")
     if prof.domain != "air":
         st.info("The generator only makes Cessna 172 circuits so far. Pick that procedure in the sidebar.",
                 icon=":material/info:")

@@ -18,7 +18,7 @@ from sim2sop import guidelines_store as store
 from sim2sop import references, render, storage
 from sim2sop.agent.graph import Progress, build_graph
 from sim2sop.agent.llm import LLMClient, get_llm
-from sim2sop.agent.planner import plan
+from sim2sop.agent.planner import NEW, plan, proposal
 from sim2sop.agent.verifier import verify_step
 from sim2sop.agent.writer import LLMWriter, TemplateWriter
 from sim2sop.ingest import ingest_run
@@ -122,6 +122,7 @@ def _build(profile: Profile, *, mode: str, llm: LLMClient | None, previous: Guid
         runs=[r.run_id for r in runs], phase_runs=phase_runs, environment=environment,
         anchor_run=state["anchor_run"], references=[d.label for d in docs],
         phases=profile.phase_names, steps=state["steps"], flags=flags, writer=writer.name,
+        rejected=dict(previous.rejected) if previous else {},
     )
     annotate_changes(doc, previous, profile, report, docs)
     doc.status = "draft" if doc.pending else (previous.status if previous else "draft")
@@ -158,8 +159,8 @@ def _reasons(profile: Profile, s: Step, o: Step) -> list[str]:
         out.append(f"{where[name.split('.')[0]]}{profile.label(b.signal)}: {change}")
     if s.mandatory != o.mandatory or s.required_by != o.required_by:
         out.append(f"Now required by {s.required_by}" if s.required_by else
-                   "Now a core guideline (every run)" if s.mandatory else
-                   f"Now a technique note ({s.seen_in}/{s.run_count} runs)")
+                   "Now a core guideline (every flight)" if s.mandatory else
+                   f"Now a technique note ({s.seen_in} of {s.run_count} flights)")
     if s.corrections_seen != o.corrections_seen and not o.edited:
         out.append("Instructor correction applied (house style)")
     if (s.reference and s.reference.doc) != (o.reference and o.reference.doc):
@@ -175,7 +176,7 @@ def annotate_changes(doc: Guidelines, prev: Guidelines | None, profile: Profile,
     if prev is None:
         for s in doc.steps:
             s.change, s.review = "added", "pending"
-            s.change_reasons = [f"New guideline from {len(s.runs)} run{'s' if len(s.runs) != 1 else ''}"]
+            s.change_reasons = [f"New guideline from {len(s.runs)} flight{'s' if len(s.runs) != 1 else ''}"]
         return
     new_docs = [d for d in docs if d.label not in prev.references]
     prev_slots, new_slots = step_slots(prev.steps), step_slots(doc.steps)
@@ -183,7 +184,7 @@ def annotate_changes(doc: Guidelines, prev: Guidelines | None, profile: Profile,
         o = prev_slots.get(slot)
         reasons = []
         if report and s.phase in report.changed:
-            reasons.append(f"Technique change in {s.phase}: {len(report.post_runs)} runs tagged "
+            reasons.append(f"Technique change in {s.phase}: {len(report.post_runs)} flights tagged "
                            f"'{report.environment}' fly it differently")
             # Cite what explains the change: documents for this environment, or new NOTAMs.
             reasons += [f"See {d.label}" for d in docs
@@ -191,17 +192,36 @@ def annotate_changes(doc: Guidelines, prev: Guidelines | None, profile: Profile,
                         or (d in new_docs and d.kind == "notam")]
         if o is None:
             s.change = "added"
-            reasons.append(f"New action seen in {s.seen_in}/{s.run_count} runs")
+            reasons.append(f"New action seen in {s.seen_in} of {s.run_count} flights")
         else:
-            changed = any(getattr(o, f) != getattr(s, f) for f in TEXT_FIELDS) or o.mandatory != s.mandatory
+            changed = (any(getattr(o, f) != getattr(s, f) for f in TEXT_FIELDS) or o.mandatory != s.mandatory
+                       or o.required_by != s.required_by)
             if not changed:
                 s.change, s.review, s.change_reasons = None, None, []
                 continue
             s.change = "modified"
             reasons += _reasons(profile, s, o) or ["Wording updated"]
         s.change_reasons, s.review = reasons, "pending"
-    doc.removed = [o.model_copy(update={"change_reasons": ["No longer seen in the runs behind this phase"]})
-                   for slot, o in prev_slots.items() if slot not in new_slots]
+    gone = {slot: o for slot, o in prev_slots.items() if slot not in new_slots}
+    # The same action detected in a neighbouring phase is a move, not a new step plus a removed one.
+    for s in doc.steps:
+        if s.change != "added":
+            continue
+        slot = next((k for k, o in gone.items() if o.key == s.key), None)
+        if slot is None:
+            continue
+        o = gone.pop(slot)
+        s.change, s.moved_from = "moved", o.phase
+        s.change_reasons = [f"Moved from {_phase(o.phase)} to {_phase(s.phase)}: with more flights, the phase "
+                            "boundary falls on the other side of this action"]
+        if any(getattr(o, f) != getattr(s, f) for f in TEXT_FIELDS):
+            s.change_reasons += _reasons(profile, s, o)
+    doc.removed = [o.model_copy(update={"change_reasons": ["No longer seen in the flights behind this phase"]})
+                   for o in gone.values()]
+
+
+def _phase(name: str) -> str:
+    return name.replace("_", " ").title()
 
 
 # --- approval and edits ----------------------------------------------------------------------
@@ -218,11 +238,15 @@ def approve(profile: Profile, version: int | None = None, approve_ids: list[str]
     keep: list[Step] = []
     for slot, s in step_slots(doc.steps).items():
         if s.review == "pending" and s.id in reject_ids:
+            # Not proposed again until the data behind it changes.
+            doc.rejected[slot] = (NEW if s.change == "added" else "") + proposal(s, profile)
             o = prev_slots.get(slot)
+            if s.change == "moved" and prev:
+                o = next((x for x in prev.steps if x.key == s.key and x.phase == s.moved_from), None)
             if o is None:
                 doc.removed.append(s.model_copy(update={"review": "rejected"}))
                 continue
-            s = o.model_copy(update={"id": s.id, "review": "rejected", "change": None,
+            s = o.model_copy(update={"id": s.id, "review": "rejected", "change": None, "moved_from": None,
                                      "change_reasons": s.change_reasons})
         elif s.review == "pending" and (approve_ids is None or s.id in approve_ids):
             s.review = "approved"

@@ -228,7 +228,8 @@ class Step(BaseModel):
     edited: bool = False
     corrections_seen: int = 0       # relevant corrections in memory when this text was written
     # update mode
-    change: Literal["added", "modified"] | None = None
+    change: Literal["added", "modified", "moved"] | None = None
+    moved_from: str | None = None   # previous phase of a "moved" step
     change_reasons: list[str] = Field(default_factory=list)
     review: Literal["pending", "approved", "rejected"] | None = None
 
@@ -253,6 +254,7 @@ class Guidelines(BaseModel):
     phases: list[str] = Field(default_factory=list)
     steps: list[Step] = Field(default_factory=list)
     removed: list[Step] = Field(default_factory=list)     # steps dropped by this version
+    rejected: dict[str, str] = Field(default_factory=dict)  # step slot -> proposal the instructor rejected
     flags: list[Flag] = Field(default_factory=list)
     metrics: dict[str, float] = Field(default_factory=dict)
     writer: str = "template"

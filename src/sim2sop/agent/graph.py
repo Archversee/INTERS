@@ -15,6 +15,7 @@ from langgraph.graph import END, StateGraph
 from sim2sop import config
 from sim2sop.agent.planner import PlanResult
 from sim2sop.agent.verifier import verify_step
+from sim2sop.agent.writer import rewrite_fields
 from sim2sop.profiles import Profile
 from sim2sop.schema import Flag, Step
 
@@ -22,6 +23,7 @@ from sim2sop.schema import Flag, Step
 class GraphState(TypedDict, total=False):
     steps: list[Step]
     pending: list[str]                  # step ids to (re)write
+    partial: dict[str, list[str]]       # step id -> the only fields to rewrite (first round)
     feedback: dict[str, list[str]]      # step id -> verifier errors from the last round
     round: int
     flags: list[Flag]
@@ -39,18 +41,19 @@ def build_graph(profile: Profile, writer: Any, planner: Callable[[], PlanResult]
 
     def plan_node(state: GraphState) -> GraphState:
         result = planner()
-        return {"steps": result.steps, "pending": result.dirty, "feedback": {}, "round": 0,
-                "flags": result.flags, "anchor_run": result.anchor_run}
+        return {"steps": result.steps, "pending": result.dirty, "partial": result.partial, "feedback": {},
+                "round": 0, "flags": result.flags, "anchor_run": result.anchor_run}
 
     def write_node(state: GraphState) -> GraphState:
         by_id = {s.id: s for s in state["steps"]}
         pending = state["pending"]
         for i, sid in enumerate(pending):
             step = by_id[sid]
+            fields = None if state["round"] else state["partial"].get(sid)
             if progress:
-                verb = "Rewriting" if state["round"] else "Writing"
+                verb = "Rewriting" if state["round"] else "Updating" if fields else "Writing"
                 progress(i, len(pending), f"{verb} {step.label}")
-            text = writer.write(step, state["feedback"].get(sid))
+            text = rewrite_fields(step, fields, profile) if fields else writer.write(step, state["feedback"].get(sid))
             for field, value in text.items():
                 setattr(step, field, value if value is not None else ("" if field != "intent" else None))
         return {"steps": state["steps"]}

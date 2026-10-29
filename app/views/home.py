@@ -34,16 +34,30 @@ def render() -> None:
     msg, page, label = _next_step(runs, docs, doc)
     with st.container(border=True):
         st.markdown(f"**:material/assistant_navigation: Next step:** {msg}")
-        ui.link_button(page, label, key="home-next")
+        if runs or prof.domain != "air":
+            ui.link_button(page, label, key="home-next")
+        else:
+            a, b = st.columns(2)
+            with a:
+                if st.button("Load sample data", type="primary", icon=":material/auto_awesome:", width="stretch",
+                             help="Five generated instructor flights and the sample official documents. "
+                                  "The guidelines are created straight away."):
+                    ui.load_sample(prof)
+                    st.rerun()
+            with b:
+                ui.link_button(page, "Upload my own flights", icon=":material/upload:", primary=False,
+                               key="home-next")
+            st.caption("New here? Sample data shows the whole workflow in one click. *Start over* in the sidebar "
+                       "clears it again.")
 
     cols = st.columns(3)
     cards = [
-        ("Instructor flights", ":material/flight:", "runs",
+        ("1 · Instructor flights", ":material/flight:", "runs",
          f"**{len(runs)}** flight{'s' if len(runs) != 1 else ''} recorded" if runs else "No flights yet", bool(runs)),
-        ("Official documents", ":material/menu_book:", "references",
+        ("2 · Official documents", ":material/menu_book:", "references",
          f"**{len(docs)}** document{'s' if len(docs) != 1 else ''} setting the hard limits" if docs
          else "None yet — guidelines will be unchecked", bool(docs)),
-        ("Guidelines", ":material/checklist:", "guidelines",
+        ("3 · Guidelines", ":material/checklist:", "guidelines",
          f"**Version {doc.version}** · {len(doc.steps)} steps · {doc.status}" if doc
          else "Created automatically from the first flight", doc is not None),
     ]
@@ -69,5 +83,5 @@ def render() -> None:
         st.write("After each flight a review window shows exactly what changed and why. "
                  "Approve or reject each change, then publish.")
 
-    st.caption("No flight data yet? Make some in the **Flight generator**, then upload it. To clear everything and "
-               "start again, use *Start over* at the bottom of the **Progress** page.")
+    st.caption("Want a particular kind of flight? Make one in the **Flight generator** and add it straight to the "
+               "guidelines. To clear everything and start again, use *Start over* in the sidebar.")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 import ui
 
@@ -22,8 +23,6 @@ def render() -> None:
     else:
         st.info("No guidelines yet. Upload a flight on *1 · Instructor flights* to create them.",
                 icon=":material/info:")
-    st.divider()
-    _start_over(prof)
 
 
 def _follow(prof, docs) -> None:
@@ -37,28 +36,19 @@ def _follow(prof, docs) -> None:
     rows = []
     for d in docs:
         s = next((x for x in d.steps if x.key == key), None)
-        if s is None or (rows and rows[-1]["Flights"] == len(d.runs)):
-            continue  # only the versions that added flights
+        if s is None:
+            continue
         sig = next((g for g in prof.trigger_for(s.phase) if f"trigger.{g}" in s.facts), None)
         f = s.facts.get(f"trigger.{sig}") if sig else None
-        rows.append({"Version": d.version, "Flights": len(d.runs),
-                     "Typically at": f.fmt_range() if f else "—", "Confidence": f"{s.confidence:.0%}",
-                     "Note": "Capped at a hard limit" if f is not None and f.clipped else
-                     ("A flight that broke a limit is left out" if len(s.runs) < len(d.runs) else "")})
+        row = {"Version": d.version, "What happened": ui.mode_title(d), "Flights": len(d.runs),
+               "Typically at": f.fmt_range() if f else "—", "Confidence": f"{s.confidence:.0%}",
+               "Note": "Capped at a hard limit" if f is not None and f.clipped else
+               ("A flight that broke a limit is left out" if len(s.runs) < len(d.runs) else "")}
+        same = ("Flights", "Typically at", "Confidence", "Note")
+        if rows and all(rows[-1][c] == row[c] for c in same):
+            continue  # only the versions where this guideline moved
+        rows.append(row)
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-
-
-def _start_over(prof) -> None:
-    st.subheader(":material/restart_alt: Start over")
-    st.write("Deletes every flight, guideline version, official document, instructor correction and generated "
-             "flight for this procedure.")
-    rules = st.checkbox("Load the sample official rules again (POH and aerodrome SOP)", value=True,
-                        help="Start with the hard limits already in place, ready for the first flight.")
-    sure = st.checkbox("Yes, delete all the data")
-    if st.button("Delete all data", type="primary", icon=":material/delete_forever:", disabled=not sure):
-        ui.reset_all(prof, load_rules=rules)
-        st.session_state["toast"] = "All data deleted." + (" Sample official rules loaded." if rules else "")
-        st.rerun()
 
 
 def _history(prof, docs) -> None:
@@ -70,6 +60,8 @@ def _history(prof, docs) -> None:
         if not prev or key not in pm:
             return None
         d = m[key] - pm[key]
+        if abs(d) < 0.005:
+            return None   # shows as "+0%": no arrow
         return f"{d:+.0%}" if pct else f"{d:+.2f}"
 
     def series(key, scale=1.0):
@@ -104,7 +96,10 @@ def _history(prof, docs) -> None:
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
     st.subheader("Range width and confidence over versions")
-    chart = pd.DataFrame({"Typical-range width (lower is better)": series("range_width_ratio"),
-                          "Confidence": series("mean_confidence")},
-                         index=[f"v{d.version}" for d in docs])
-    st.line_chart(chart)
+    x = [f"v{d.version}" for d in docs]
+    fig = go.Figure([go.Scatter(x=x, y=series("range_width_ratio"), name="Typical-range width (lower is better)"),
+                     go.Scatter(x=x, y=series("mean_confidence"), name="Confidence")])
+    top = max(1.0, *series("range_width_ratio"), *series("mean_confidence"))
+    fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", y=-0.2),
+                      yaxis=dict(range=[0, top * 1.05]))
+    st.plotly_chart(fig, width="stretch")
