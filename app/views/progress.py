@@ -15,10 +15,53 @@ def render() -> None:
     st.title(":material/trending_up: Progress")
     st.write("How the guidelines improve as instructors add flights, official documents and corrections.")
     versions = store.versions(prof.procedure)
-    if not versions:
-        st.info("No guidelines yet.", icon=":material/info:")
-        return
-    docs = [store.load(prof.procedure, v) for v in versions]
+    if versions:
+        docs = [store.load(prof.procedure, v) for v in versions]
+        _history(prof, docs)
+        _follow(prof, docs)
+    else:
+        st.info("No guidelines yet. Upload a flight on *1 · Instructor flights* to create them.",
+                icon=":material/info:")
+    st.divider()
+    _start_over(prof)
+
+
+def _follow(prof, docs) -> None:
+    """One guideline, version by version: the quickest way to see it learn."""
+    latest = docs[-1]
+    keys = list(dict.fromkeys(s.key for s in latest.steps))
+    labels = {s.key: f"{ui.phase_title(s.phase)} · {s.label}" for s in reversed(latest.steps)}
+    st.subheader("Follow one guideline")
+    key = st.selectbox("Guideline", keys, format_func=labels.get, key="follow",
+                       index=keys.index("toggle:flaps_idx:2") if "toggle:flaps_idx:2" in keys else 0)
+    rows = []
+    for d in docs:
+        s = next((x for x in d.steps if x.key == key), None)
+        if s is None or (rows and rows[-1]["Flights"] == len(d.runs)):
+            continue  # only the versions that added flights
+        sig = next((g for g in prof.trigger_for(s.phase) if f"trigger.{g}" in s.facts), None)
+        f = s.facts.get(f"trigger.{sig}") if sig else None
+        rows.append({"Version": d.version, "Flights": len(d.runs),
+                     "Typically at": f.fmt_range() if f else "—", "Confidence": f"{s.confidence:.0%}",
+                     "Note": "Capped at a hard limit" if f is not None and f.clipped else
+                     ("A flight that broke a limit is left out" if len(s.runs) < len(d.runs) else "")})
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+
+
+def _start_over(prof) -> None:
+    st.subheader(":material/restart_alt: Start over")
+    st.write("Deletes every flight, guideline version, official document, instructor correction and generated "
+             "flight for this procedure.")
+    rules = st.checkbox("Load the sample official rules again (POH and aerodrome SOP)", value=True,
+                        help="Start with the hard limits already in place, ready for the first flight.")
+    sure = st.checkbox("Yes, delete all the data")
+    if st.button("Delete all data", type="primary", icon=":material/delete_forever:", disabled=not sure):
+        ui.reset_all(prof, load_rules=rules)
+        st.session_state["toast"] = "All data deleted." + (" Sample official rules loaded." if rules else "")
+        st.rerun()
+
+
+def _history(prof, docs) -> None:
     edits = edits_per_version(prof.procedure)
     last, prev = docs[-1], (docs[-2] if len(docs) > 1 else None)
     m, pm = last.metrics, (prev.metrics if prev else {})

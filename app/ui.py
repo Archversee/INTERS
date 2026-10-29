@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from sim2sop import config, storage
+from sim2sop import config, references, storage
 from sim2sop import guidelines_store as store
 from sim2sop.agent.llm import get_llm
-from sim2sop.generate import generate
-from sim2sop.ingest import ingest_run
 from sim2sop.learn.changes import step_slots
 from sim2sop.pipeline import approve, create_guidelines, update_guidelines
 from sim2sop.profiles import Profile, list_profiles, load_profile
@@ -111,30 +110,27 @@ def link_button(page_key: str, label: str, icon: str = ":material/arrow_forward:
         st.switch_page(PAGES[page_key])
 
 
-# --- sample data --------------------------------------------------------------------------------
+# --- data ---------------------------------------------------------------------------------------
 
-def sample_dirs(prof: Profile) -> list[Path]:
-    raw = config.RAW_DIR / prof.domain
-    # "obstacle" folders are left over from an older version of the demo.
-    dirs = sorted(d for d in raw.glob("*") if d.is_dir() and "obstacle" not in d.name) if raw.exists() else []
-    if not dirs and prof.domain == "air":
-        dirs = generate(prof.domain, n=5)
-    return dirs
+def generated_dir(prof: Profile) -> Path:
+    return config.RAW_DIR / "generated" / prof.domain
 
 
-def remaining_samples(prof: Profile) -> list[Path]:
-    if prof.domain != "air":
-        return []
-    known = {r.run_id for r in storage.list_runs(prof.procedure)}
-    return [d for d in sample_dirs(prof) if d.name not in known]
-
-
-def add_flights(prof: Profile, dirs: list[Path]) -> None:
-    """Ingest flights, then update the guidelines and pop up the review."""
-    for d in dirs:
-        ingest_run(d, prof)
-    names = [run_title(d.name) for d in dirs]
-    refresh_guidelines(prof, f"{names[0]} added" if len(names) == 1 else f"{len(names)} flights added")
+def reset_all(prof: Profile, load_rules: bool = True) -> None:
+    """Delete every flight, guideline version, document, correction and generated flight for
+    the procedure; optionally load the sample official rules again."""
+    storage.delete_runs(prof.procedure)
+    shutil.rmtree(config.GUIDELINES_DIR / prof.procedure, ignore_errors=True)
+    references.clear_references(prof.procedure)
+    shutil.rmtree(config.MEMORY_DIR, ignore_errors=True)
+    shutil.rmtree(generated_dir(prof), ignore_errors=True)
+    telemetry.clear()
+    for k in ("review_queue", "gen_current"):
+        st.session_state.pop(k, None)
+    if load_rules:
+        for path in sorted((config.REFERENCES_DIR / prof.references).glob("*.md")):
+            if path.name.lower() != "readme.md":
+                references.add_reference(prof.procedure, path)
 
 
 # --- building and reviewing ----------------------------------------------------------------------
@@ -220,13 +216,18 @@ def review_dialog(version: int, title: str) -> None:
         st.success("Nothing left to review.")
         return
     prev = store.load(prof.procedure, doc.parent_version) if doc.parent_version else None
-    st.markdown(f"### {title}")
-    _review_summary(prof, doc, prev)
+    # The only publish button, top right. It keeps any change marked "Reject" below at its old text.
+    rejects = [x.id for x in doc.pending if st.session_state.get(f"dec-{version}-{x.id}") == "Reject"]
+    head, btn = st.columns([3, 2], vertical_alignment="center")
+    head.markdown(f"### {title}")
+    if btn.button("Approve all and publish" if not rejects else f"Publish ({len(rejects)} rejected)",
+                  type="primary", icon=":material/done_all:", key="pub-all", width="stretch"):
+        _publish(prof, doc, rejects)
+    _review_summary(doc, prev)
     capped = [f.message for f in doc.flags if f.kind == "clipped"]
     if capped:
         st.warning("**Capped at an official limit:** " + " ".join(capped), icon=":material/vertical_align_top:")
 
-    decisions: dict[str, str] = {}
     if prev is None:
         st.markdown(f"**{len(doc.steps)} new guidelines** from {len(doc.runs)} flight"
                     f"{'s' if len(doc.runs) != 1 else ''}. Read through and publish.")
@@ -241,14 +242,14 @@ def review_dialog(version: int, title: str) -> None:
         important = [s for s in doc.pending if _is_important(s)]
         routine = [s for s in doc.pending if not _is_important(s)]
         st.markdown(f"**{len(doc.pending)} guideline{'s' if len(doc.pending) != 1 else ''} changed.** "
-                    "Approve keeps the new text; Reject keeps the previous version.")
+                    "Everything is approved unless you mark it *Reject* (keeps the previous version).")
         for s in important:
             with st.container(border=True):
                 head, choice = st.columns([4, 2])
                 head.markdown(f"**{phase_title(s.phase)} · {s.action}**")
                 head.markdown(step_badges(s))
                 with choice:
-                    decisions[s.id] = _decision(s, version)
+                    _decision(s, version)
                 st.markdown("\n".join(f"- {r}" for r in s.change_reasons))
                 old = prev_slots.get(slot_of[s.id])
                 if old is not None:
@@ -263,14 +264,9 @@ def review_dialog(version: int, title: str) -> None:
                     head.markdown(f"**{phase_title(s.phase)} · {s.action}**  \n"
                                   + "; ".join(s.change_reasons[:3]))
                     with choice:
-                        decisions[s.id] = _decision(s, version)
+                        _decision(s, version)
         if doc.removed:
             st.markdown("**Removed:** " + ", ".join(f"{phase_title(s.phase)} · {s.label}" for s in doc.removed))
-
-    rejects = [sid for sid, d in decisions.items() if d == "Reject"]
-    label = "Approve and publish" if not rejects else f"Publish ({len(rejects)} rejected)"
-    if st.button(label, type="primary", icon=":material/publish:"):
-        _publish(prof, doc, rejects)
 
 
 def _publish(prof: Profile, doc: Guidelines, rejects: list[str]) -> None:
@@ -280,17 +276,14 @@ def _publish(prof: Profile, doc: Guidelines, rejects: list[str]) -> None:
     st.rerun()
 
 
-def _review_summary(prof: Profile, doc: Guidelines, prev: Guidelines | None) -> None:
-    """The headline numbers, and a one-click publish for a quick demo."""
+def _review_summary(doc: Guidelines, prev: Guidelines | None) -> None:
+    """The headline numbers of the new version."""
     m, pm = doc.metrics, prev.metrics if prev else {}
-    c = st.columns([1, 1, 1, 2], vertical_alignment="center")
+    c = st.columns(3)
     c[0].metric("Flights", len(doc.runs), f"+{len(doc.runs) - len(prev.runs)}" if prev else None)
     c[1].metric("Guidelines changed", len(doc.pending))
     c[2].metric("Confidence", f"{m['mean_confidence']:.0%}",
                 f"{(m['mean_confidence'] - pm['mean_confidence']) * 100:+.0f} pts" if pm else None)
-    if c[3].button("Approve all and publish", type="primary", icon=":material/done_all:", key="pub-all",
-                   width="stretch", help="Accept every change below. To reject some, scroll down."):
-        _publish(prof, doc, [])
 
 
 # --- guideline card -----------------------------------------------------------------------------

@@ -1,17 +1,81 @@
-"""Step 1: instructor flights."""
+"""Step 1: instructor flights. Flights come in only by uploading recorded data."""
 
 from __future__ import annotations
 
-import shutil
 import tempfile
+import zipfile
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 import ui
 
-from sim2sop import config, references, storage
+from sim2sop import storage
 from sim2sop.ingest import ingest_run
+
+TELEMETRY = (".csv", ".parquet")
+
+
+def _flight_dirs(root: Path) -> list[Path]:
+    """Every folder in an unpacked upload that holds a telemetry file."""
+    found = {p.parent for p in root.rglob("*") if p.suffix.lower() in TELEMETRY and "__MACOSX" not in p.parts}
+    return sorted(found)
+
+
+def _ingest(prof, files, notes) -> list[str]:
+    """Ingest the uploaded files; returns the names of the flights added."""
+    added = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, f in enumerate(files):
+            d = Path(tmp) / str(i)
+            d.mkdir()
+            stem = Path(f.name).stem
+            if f.name.lower().endswith(".zip"):
+                with zipfile.ZipFile(f) as z:
+                    z.extractall(d)
+                dirs = _flight_dirs(d)
+                if not dirs:
+                    st.error(f"{f.name}: no telemetry file (.csv or .parquet) inside.", icon=":material/error:")
+                for run_dir in dirs:
+                    # A zip of the flight's files (not of its folder) takes the zip's name,
+                    # unless its meta.json names the flight.
+                    run_id = stem if run_dir == d and not (d / "meta.json").exists() else None
+                    added.append(ingest_run(run_dir, prof, run_id=run_id).run_id)
+            else:
+                (d / f.name).write_bytes(f.getvalue())
+                if notes is not None and len(files) == 1:
+                    (d / "annotations.json").write_bytes(notes.getvalue())
+                added.append(ingest_run(d, prof, run_id=stem).run_id)
+    return added
+
+
+def _upload(prof) -> None:
+    n = st.session_state.setdefault("upload_n", 0)   # bumped after each upload to clear the boxes
+    with st.container(border=True):
+        st.markdown("**Upload flight data**")
+        st.caption("A **.zip** of one or more flight folders (as downloaded from the Flight generator), or a "
+                   "simulator **telemetry CSV**. The guidelines update straight away and show you what changed.")
+        files = st.file_uploader("Flight data", type=["zip", "csv", "parquet"], accept_multiple_files=True,
+                                 key=f"up-{n}", label_visibility="collapsed")
+        notes = None
+        if len(files) == 1 and not files[0].name.lower().endswith(".zip"):
+            notes = st.file_uploader("Callouts for this flight (annotations.json, optional)", type=["json"],
+                                     key=f"up-notes-{n}")
+        if st.button("Add to the guidelines", type="primary", icon=":material/upload:", disabled=not files):
+            try:
+                added = _ingest(prof, files, notes)
+            except Exception as e:  # a malformed file should not crash the page
+                st.error(f"Could not read the upload: {e}", icon=":material/error:")
+                return
+            if added:
+                st.session_state["upload_n"] = n + 1
+                title = f"{ui.run_title(added[0])} added" if len(added) == 1 else f"{len(added)} flights added"
+                ui.refresh_guidelines(prof, title)
+                st.rerun()
+        st.caption("Need data? Make a flight in the **Flight generator** and download it. The file format is "
+                   "explained there too.")
+        ui.link_button("generator", "Open the Flight generator", icon=":material/science:", key="runs-gen",
+                       primary=False)
 
 
 def render() -> None:
@@ -19,46 +83,13 @@ def render() -> None:
     st.title(":material/flight: Instructor flights")
     st.write("Each flight is one instructor flying the procedure in the simulator, with their spoken "
              "callouts. The more flights you add, the better the guidelines describe the typical technique.")
+    ui.pending_banner(prof, key="runs-review")
+    _upload(prof)
 
     runs = storage.list_runs(prof.procedure)
-    ui.pending_banner(prof, key="runs-review")
-    remaining = ui.remaining_samples(prof)
-
-    with st.container(border=True):
-        st.markdown("**Add sample flights** (generated in the simulator's own data format). "
-                    "The guidelines update straight after each flight and show you what changed.")
-        c1, c2 = st.columns(2)
-        if c1.button(f"Add {ui.run_title(remaining[0].name)}" if remaining else "All 5 flights added",
-                     icon=":material/add:", disabled=not remaining, width="stretch", type="primary"):
-            ui.add_flights(prof, remaining[:1])
-            st.rerun()
-        if c2.button(f"Add all {len(remaining)} remaining" if len(remaining) > 1 else "Add all remaining",
-                     icon=":material/playlist_add:", disabled=len(remaining) < 2, width="stretch"):
-            ui.add_flights(prof, remaining)
-            st.rerun()
-        if prof.domain != "air":
-            st.caption("Sample flights are only available for the air procedure so far. Upload your own below.")
-        else:
-            st.caption("Want a different flight? Make your own in the **Flight generator**.")
-            ui.link_button("generator", "Open the Flight generator", icon=":material/science:", key="runs-gen",
-                           primary=False)
-
-    with st.expander("Upload a recorded flight", icon=":material/upload:"):
-        tele = st.file_uploader("Telemetry file from the simulator (CSV)", type=["csv", "parquet", "nmea", "log", "txt"])
-        notes = st.file_uploader("Callouts (annotations.json, optional)", type=["json"])
-        if tele is not None and st.button("Add this flight", type="primary"):
-            with tempfile.TemporaryDirectory() as tmp:
-                d = Path(tmp)
-                (d / tele.name).write_bytes(tele.getvalue())
-                if notes is not None:
-                    (d / "annotations.json").write_bytes(notes.getvalue())
-                rec = ingest_run(d, prof, run_id=Path(tele.name).stem)
-            ui.refresh_guidelines(prof, f"{rec.run_id} added")
-            st.rerun()
-
     st.subheader(f"{len(runs)} flight{'s' if len(runs) != 1 else ''} recorded")
     if not runs:
-        st.info("No flights yet. Add the first flight — the guidelines are created from it automatically.",
+        st.info("No flights yet. Upload the first flight — the guidelines are created from it automatically.",
                 icon=":material/info:")
         return
     rows = []
@@ -76,15 +107,3 @@ def render() -> None:
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     ui.link_button("guidelines", "Open the guidelines", key="runs-next", primary=False)
-
-    with st.expander("Start over", icon=":material/delete:"):
-        st.write("Deletes all flights, guidelines, added documents and instructor corrections for this procedure.")
-        if st.checkbox("Yes, delete everything for this procedure") and st.button("Delete", type="primary"):
-            storage.delete_runs(prof.procedure)
-            shutil.rmtree(config.GUIDELINES_DIR / prof.procedure, ignore_errors=True)
-            references.clear_references(prof.procedure)
-            shutil.rmtree(config.MEMORY_DIR, ignore_errors=True)
-            ui.telemetry.clear()
-            st.session_state.pop("demo_log", None)
-            st.session_state.pop("review_queue", None)
-            st.rerun()

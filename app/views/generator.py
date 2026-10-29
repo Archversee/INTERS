@@ -60,7 +60,7 @@ FORMAT = {
 
 
 def _out_dir(prof: Profile) -> Path:
-    return config.RAW_DIR / "generated" / prof.domain
+    return ui.generated_dir(prof)
 
 
 def _generated(prof: Profile) -> list[Path]:
@@ -253,16 +253,17 @@ def _rundown(prof: Profile, run_dir: Path) -> None:
             t2.json(json.loads((run_dir / "annotations.json").read_text(encoding="utf-8")), expanded=False)
             t3.json(meta)
 
+        if added:
+            st.caption(":green[:material/check_circle:] This flight has been uploaded.")
+        else:
+            st.caption("To add it to the guidelines, download the zip and upload it on *1 · Instructor flights*.")
         b1, b2, b3 = st.columns(3)
-        if b1.button("Already added" if added else "Add to the guidelines", type="primary", disabled=added,
-                     icon=":material/check:" if added else ":material/add:", width="stretch",
-                     help="Adds the flight like any recorded flight; the guidelines update and the review pops up."):
-            ui.add_flights(prof, [run_dir])
-            st.rerun()
-        b2.download_button("Download (zip)", _zip(run_dir), file_name=f"{run_dir.name}.zip",
+        b1.download_button("Download (zip)", _zip(run_dir), file_name=f"{run_dir.name}.zip", type="primary",
                            mime="application/zip", icon=":material/download:", width="stretch")
-        if b3.button("Discard", icon=":material/delete:", width="stretch", disabled=added,
-                     help="Delete the generated files (flights already added stay)."):
+        with b2:
+            ui.link_button("runs", "Go to upload", icon=":material/upload:", primary=False, key="gen-upload")
+        if b3.button("Discard", icon=":material/delete:", width="stretch",
+                     help="Delete the generated files (flights already uploaded stay)."):
             shutil.rmtree(run_dir, ignore_errors=True)
             st.session_state.pop("gen_current", None)
             st.rerun()

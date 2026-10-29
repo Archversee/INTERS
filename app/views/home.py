@@ -11,7 +11,8 @@ from sim2sop import references, storage
 
 def _next_step(runs, docs, doc) -> tuple[str, str, str]:
     if not runs:
-        return "Add the first instructor flight. The guidelines are created from it automatically.", "runs", "Add flights"
+        return ("Upload the first instructor flight. The guidelines are created from it automatically.", "runs",
+                "Upload flights")
     if not docs:
         return ("Add the official documents (POH, SOP) so the guidelines are checked against hard limits.",
                 "references", "Add documents")
@@ -68,6 +69,5 @@ def render() -> None:
         st.write("After each flight a review window shows exactly what changed and why. "
                  "Approve or reject each change, then publish.")
 
-    st.info("New here? The **Guided demo** starts with the official documents loaded and lets you add the "
-            "flights one by one.", icon=":material/play_circle:")
-    ui.link_button("demo", "Open the guided demo", icon=":material/play_circle:", primary=False, key="home-demo")
+    st.caption("No flight data yet? Make some in the **Flight generator**, then upload it. To clear everything and "
+               "start again, use *Start over* at the bottom of the **Progress** page.")
