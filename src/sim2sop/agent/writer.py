@@ -69,13 +69,12 @@ class TemplateWriter:
             head = f"{p.label(step.signal)} {step.facts['action'].fmt_range()}"
         extra = [s for s in p.result_for(step.phase) if s not in p.result_signals]
         after = ", ".join(self._ranges(step, "result", extra))
-        n = len(step.runs)
         typical = ""
         if head or context:
             typical = "Usually " + (f"{head} at {context}" if head and context else head or context)
             if after:
                 typical += f"; then {after}"
-            typical += f" ({n} flight{'s' if n != 1 else ''})."
+            typical += "."
         out = {
             "trigger": trigger,
             "action": f"{step.label}.",

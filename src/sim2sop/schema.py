@@ -165,8 +165,12 @@ class Fact(BaseModel):
     limit_max: float | None = None
     clipped: bool = False
 
+    def _num(self, x: float) -> str:
+        v = f"{x:.{self.decimals}f}"
+        return v.lstrip("-") if float(v) == 0 else v   # never "-0"
+
     def fmt(self, value: float | None = None) -> str:
-        v = f"{self.value if value is None else value:.{self.decimals}f}"
+        v = self._num(self.value if value is None else value)
         if not self.unit:
             return v
         return f"{v}{self.unit}" if self.unit in ("%", "°") else f"{v} {self.unit}"
@@ -174,8 +178,8 @@ class Fact(BaseModel):
     def fmt_range(self) -> str:
         if self.lo is None or self.hi is None:
             return self.fmt()
-        lo = f"{self.lo:.{self.decimals}f}"
-        if lo == f"{self.hi:.{self.decimals}f}":
+        lo = self._num(self.lo)
+        if lo == self._num(self.hi):
             return self.fmt()
         sep = " to " if self.lo < 0 or self.hi < 0 else "–"
         return f"{lo}{sep}{self.fmt(self.hi)}"

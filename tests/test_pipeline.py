@@ -104,6 +104,13 @@ def test_new_flight_updates_only_what_it_changes(data_dir, air_raw, refs_dir, tm
     before, after = step_slots(v1.steps), step_slots(v.steps)
     same = [k for k, s in after.items() if not s.change and k in before]
     assert same and all(after[k].typical == before[k].typical for k in same)
+    # "Changed" always means the reader sees a difference, not just a new flight count.
+    fields = ("trigger", "action", "intent", "typical", "limit")
+    for k, s in after.items():
+        if s.change == "modified":
+            o = before[k]
+            assert any(getattr(o, f) != getattr(s, f) for f in fields) or o.mandatory != s.mandatory, s.label
+            assert not any(r.startswith("Based on") for r in s.change_reasons[:1]), s.change_reasons
 
     reject = v.pending[0]
     published = approve(p, reject_ids=[reject.id])

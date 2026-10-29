@@ -80,7 +80,7 @@
   <dl>
     {% if s.trigger %}<dt>When</dt><dd>{{ s.trigger }}</dd>{% endif %}
     {% if s.intent %}<dt>Why</dt><dd>{{ s.intent }}</dd>{% endif %}
-    {% if s.typical %}<dt>Typical range</dt><dd>{{ s.typical }}</dd>{% endif %}
+    {% if s.typical %}<dt>Typical range</dt><dd>{{ s.typical }} ({{ s.runs|length }} flight{{ 's' if s.runs|length != 1 }})</dd>{% endif %}
     <dt>Hard limit</dt>
     {% if s.limit %}<dd class="limit">{{ s.limit }}</dd>
     {% elif doc.checked %}<dd class="ref">None in the reference SOPs for this step.</dd>

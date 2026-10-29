@@ -153,8 +153,10 @@ class Profile(BaseModel):
         return spec.result_signals if spec and spec.result_signals else self.result_signals
 
     def stated_facts(self, phase: str) -> list[str]:
-        """Facts a guideline in this phase states: the action value, trigger and result."""
-        return ["action"] + [f"trigger.{s}" for s in self.trigger_for(phase)]             + [f"result.{s}" for s in self.result_for(phase)]
+        """Facts a guideline in this phase states: the action value, the trigger values, and
+        only the results this phase adds on purpose (e.g. distance from the runway on downwind)."""
+        return (["action"] + [f"trigger.{s}" for s in self.trigger_for(phase)]
+                + [f"result.{s}" for s in self.result_for(phase) if s not in self.result_signals])
 
     def unit(self, signal: str) -> str | None:
         spec = self.signals.get(signal)

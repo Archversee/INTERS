@@ -311,7 +311,8 @@ def step_badges(s: Step) -> str:
 
 def guideline_body(s: Step, doc: Guidelines) -> None:
     rows = [(":material/schedule:", "When", s.trigger), (":material/lightbulb:", "Why", s.intent),
-            (":material/straighten:", "Typical", s.typical)]
+            (":material/straighten:", "Typical",
+             s.typical and f"{s.typical} :gray[({len(s.runs)} flight{'s' if len(s.runs) != 1 else ''})]")]
     for icon, label, text in rows:
         if text:
             st.markdown(f"{icon} **{label}** — {text}")

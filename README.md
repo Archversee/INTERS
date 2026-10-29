@@ -21,8 +21,8 @@ checks every number against the telemetry and the reference limits.
 python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -e ".[app,dev]"
-
 streamlit run app/streamlit_app.py  # the app: upload flights, review each change, read the guidelines
+
 sim2sop demo --provider none      # the same demo script from the command line, no LLM needed
 uvicorn sim2sop.api:app --reload  # REST API at http://localhost:8000/docs
 pytest

@@ -57,11 +57,15 @@ def _label(item: ConsensusItem, facts) -> str:
     return item.label
 
 
-def _signature(s: Step) -> tuple:
-    facts = tuple(sorted((n, f.fmt(), f.fmt_range()) for n, f in s.facts.items()))
+def _signature(s: Step, profile: Profile) -> tuple:
+    """What the reader sees: the stated numbers, limits, citation and badges. Numbers the
+    guideline does not state, and the flight count, can move without a rewrite."""
+    facts = tuple((n, s.facts[n].fmt(), s.facts[n].fmt_range(), s.facts[n].clipped)
+                  for n in profile.stated_facts(s.phase) if n in s.facts)
     limits = tuple(sorted((lim.id, lim.revision or "", lim.describe()) for lim in s.limits))
     ref = (s.reference.doc, s.reference.section) if s.reference else None
-    return (s.key, s.phase, s.seen_in, s.run_count, s.mandatory, s.required_by, facts, limits, ref)
+    technique = None if s.mandatory else (s.seen_in, s.run_count)
+    return (s.key, s.phase, s.mandatory, s.required_by, technique, facts, limits, ref)
 
 
 def _consensus_by_phase(runs: list[RunRecord], profile: Profile,
@@ -151,7 +155,7 @@ def plan(runs: list[RunRecord], profile: Profile, refs: ReferenceIndex,
         for slot_key, s in step_slots(steps).items():
             old = prev_slots.get(slot_key)
             new_correction = old is not None and not old.edited and old.corrections_seen != s.corrections_seen
-            if old is not None and _signature(s) == _signature(old) and not new_correction:
+            if old is not None and _signature(s, profile) == _signature(old, profile) and not new_correction:
                 for f in TEXT_FIELDS:
                     setattr(s, f, getattr(old, f))
                 s.verified, s.edited, s.flags = old.verified, old.edited, old.flags

@@ -144,12 +144,14 @@ def _reasons(profile: Profile, s: Step, o: Step) -> list[str]:
         out.append(f"Hard limit no longer applies: {old_l[i].text} ({old_l[i].cite()})")
     if any(f.clipped for f in s.facts.values()) and not any(f.clipped for f in o.facts.values()):
         out.append("Value clipped to a hard limit")
-    if len(s.runs) != len(o.runs):
-        out.append(f"Typical ranges from {len(s.runs)} runs (was {len(o.runs)})")
+    where = {"action": "", "trigger": "", "result": "afterwards, "}
     for name in profile.stated_facts(s.phase):
         a, b = o.facts.get(name), s.facts.get(name)
-        if a and b and a.fmt_range() != b.fmt_range():
-            out.append(f"{profile.label(b.signal)}: {a.fmt_range()} → {b.fmt_range()}")
+        if not (a and b) or (a.fmt(), a.fmt_range()) == (b.fmt(), b.fmt_range()):
+            continue
+        change = (f"{a.fmt_range()} → {b.fmt_range()}" if a.fmt_range() != b.fmt_range()
+                  else f"about {a.fmt()} → {b.fmt()}")   # same range, the typical value moved
+        out.append(f"{where[name.split('.')[0]]}{profile.label(b.signal)}: {change}")
     if s.mandatory != o.mandatory or s.required_by != o.required_by:
         out.append(f"Now required by {s.required_by}" if s.required_by else
                    "Now a core guideline (every run)" if s.mandatory else
@@ -158,6 +160,8 @@ def _reasons(profile: Profile, s: Step, o: Step) -> list[str]:
         out.append("Instructor correction applied (house style)")
     if (s.reference and s.reference.doc) != (o.reference and o.reference.doc):
         out.append(f"Cited: {s.reference.doc} — {s.reference.section}" if s.reference else "Citation removed")
+    if out and len(s.runs) != len(o.runs):
+        out.append(f"Based on {len(s.runs)} flights (was {len(o.runs)})")
     return out
 
 
