@@ -47,7 +47,7 @@ def _hero() -> None:
 <div class="hero">
   <span class="tag">For flight schools, driving schools and maritime academies</span>
   <h1>Turn every simulator session into guidelines <em>students can trust.</em></h1>
-  <p>Sim-to-SOP learns how your instructors actually do it from recorded simulator {ui.noun(2)}, writes it up as
+  <p>Sim-to-Guidelines learns how your instructors actually do it from recorded simulator {ui.noun(2)}, writes it up as
      clear step-by-step guidelines, and checks every number against the official limits.</p>
   <div class="proof"><span><i></i>Every number traced to recorded data</span>
     <span><i></i>Hard limits quoted from your manuals</span><span><i></i>You approve every change</span></div>

@@ -1,4 +1,4 @@
-"""Sim-to-SOP app.
+"""Sim-to-Guidelines app.
 
     streamlit run app/streamlit_app.py
 """
@@ -12,7 +12,7 @@ from views import explorer, generator, guidelines, home, progress, references_pa
 from sim2sop import config
 from sim2sop.profiles import list_profiles
 
-st.set_page_config(page_title="Sim-to-SOP · simulator data to student guidelines",
+st.set_page_config(page_title="Sim-to-Guidelines · simulator data to student guidelines",
                    page_icon=str(ui.ASSETS / "mark.svg"), layout="wide")
 ui.style()
 
