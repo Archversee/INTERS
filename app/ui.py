@@ -135,39 +135,48 @@ def sample_dir(prof: Profile) -> Path:
     return config.RAW_DIR / "sample" / prof.domain
 
 
+def rules_folder(prof: Profile) -> Path:
+    """Where the procedure's built-in official documents live."""
+    return config.REFERENCES_DIR / prof.references
+
+
+def ensure_rules(prof: Profile) -> None:
+    """The built-in official documents are always in force: add any that are missing, and add a
+    document again when its file was edited (call once per run). Existing guidelines are
+    re-checked against the new rules."""
+    changed = references.sync_builtin(prof.procedure, rules_folder(prof))
+    if changed and store.latest(prof.procedure) is not None:
+        refresh_guidelines(prof, "Official rules updated: " + ", ".join(d.label for d in changed))
+
+
 def start_over(prof: Profile) -> None:
     """Delete everything for the procedure, behind a confirmation (sidebar popover)."""
-    st.caption(f"Deletes every {noun()}, guideline version, official document, instructor correction and "
-               f"generated {noun()} for this procedure.")
-    rules = st.checkbox("Load the sample official rules again", value=True, key="reset-rules",
-                        help=f"Start with the hard limits already in place, ready for the first {noun()}.")
+    st.caption(f"Deletes every {noun()}, guideline version, uploaded document, instructor correction and "
+               f"generated {noun()} for this procedure. The built-in official rules stay.")
     sure = st.checkbox("Yes, delete all the data", key="reset-sure")
     if st.button("Delete all data", type="primary", icon=":material/delete_forever:", disabled=not sure,
                  key="reset-go", width="stretch"):
-        reset_all(prof, load_rules=rules)
-        st.session_state["toast"] = "All data deleted." + (" Sample official rules loaded." if rules else "")
+        reset_all(prof)
+        st.session_state["toast"] = "All data deleted. The built-in official rules stay in force."
         st.rerun()
 
 
 def load_sample(prof: Profile) -> None:
-    """First-run shortcut: the sample official documents and five generated instructor
-    runs, then the guidelines are created and the review pops up."""
+    """First-run shortcut: five generated instructor runs, then the guidelines are created
+    (against the built-in official rules) and the review pops up."""
     from sim2sop.generate import generate
     from sim2sop.ingest import ingest_run
 
-    added = {d.id for d in references.list_references(prof.procedure)}
-    for path in sorted((config.REFERENCES_DIR / prof.references).glob("*.md")):
-        if path.name.lower() != "readme.md" and references.read_doc_meta(path).get("id") not in added:
-            references.add_reference(prof.procedure, path)
+    references.sync_builtin(prof.procedure, rules_folder(prof))
     with st.spinner(f"Generating five instructor {noun(2)}…"):
         for run_dir in generate(prof.domain, n=5, out_dir=sample_dir(prof)):
             ingest_run(run_dir, prof)
-    refresh_guidelines(prof, f"Sample data loaded: 5 {noun(2)} and the official documents")
+    refresh_guidelines(prof, f"Sample data loaded: 5 {noun(2)}")
 
 
-def reset_all(prof: Profile, load_rules: bool = True) -> None:
-    """Delete every run, guideline version, document, correction and generated run for
-    the procedure; optionally load the sample official rules again."""
+def reset_all(prof: Profile) -> None:
+    """Delete every run, guideline version, uploaded document, correction and generated run
+    for the procedure. The built-in official rules are put straight back."""
     storage.delete_runs(prof.procedure)
     shutil.rmtree(config.GUIDELINES_DIR / prof.procedure, ignore_errors=True)
     references.clear_references(prof.procedure)
@@ -177,10 +186,7 @@ def reset_all(prof: Profile, load_rules: bool = True) -> None:
     telemetry.clear()
     for k in ("review_queue", "gen_current"):
         st.session_state.pop(k, None)
-    if load_rules:
-        for path in sorted((config.REFERENCES_DIR / prof.references).glob("*.md")):
-            if path.name.lower() != "readme.md":
-                references.add_reference(prof.procedure, path)
+    references.sync_builtin(prof.procedure, rules_folder(prof))
 
 
 # --- building and reviewing ----------------------------------------------------------------------

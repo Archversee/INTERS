@@ -140,6 +140,7 @@ class RefDoc(BaseModel):
     file: str                       # stored file name inside the library
     added: datetime = Field(default_factory=_now)
     active: bool = True             # False once superseded by a newer revision
+    builtin: bool = False           # shipped with the procedure: always in force, cannot be removed
     limits: list[Limit] = Field(default_factory=list)
     requirements: list[Requirement] = Field(default_factory=list)
 

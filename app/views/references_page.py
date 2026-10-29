@@ -9,8 +9,7 @@ import pandas as pd
 import streamlit as st
 import ui
 
-from sim2sop import config, references
-from sim2sop.references import read_doc_meta
+from sim2sop import references
 
 
 def _added(prof, doc) -> None:
@@ -24,7 +23,7 @@ def _rules(prof, active) -> None:
     reqs = [(d, r) for d in active for r in d.requirements]
     st.subheader(f"Rules in force ({len(limits) + len(reqs)})")
     if not limits and not reqs:
-        st.info("No rules yet. Add the sample official documents below to check the guidelines against "
+        st.info("No rules yet. Upload an official document below to check the guidelines against "
                 "official limits.", icon=":material/info:")
         return
     st.caption(f"The guidelines never go past these. A {ui.noun()} that does is flagged, and its value is left out "
@@ -50,33 +49,24 @@ def render() -> None:
     st.title(":material/menu_book: Official documents")
     st.write("The official manuals and standard operating procedures are the authority. They set the "
              "**hard limits** the guidelines must stay inside. They are only read, never changed.")
-    st.caption("Optional: without them, guidelines are still created but marked *Unchecked*. "
-               "Adding a document re-checks the guidelines straight away.")
+    st.caption(":material/lock: The built-in documents are always in force and cannot be removed or replaced. "
+               "You can upload more of your own; adding one re-checks the guidelines straight away.")
     ui.pending_banner(prof, key="refs-review")
 
     docs = references.list_references(prof.procedure, active_only=False)
-    added_ids = {d.id: d for d in docs if d.active}
-    _rules(prof, [d for d in docs if d.active])
+    active = [d for d in docs if d.active]
+    _rules(prof, active)
 
-    samples = [p for p in sorted((config.REFERENCES_DIR / prof.references).glob("*.md"))
-               if p.name.lower() != "readme.md"]
-    if samples:
-        st.subheader("Add documents")
-        cols = st.columns(2)
-        for i, path in enumerate(samples):
-            meta = read_doc_meta(path)
-            doc_id, title = str(meta.get("id") or path.stem), meta.get("title") or path.stem
-            kind = ui.DOC_KINDS.get(meta.get("kind", "other"), "Document")
-            n_lim, n_req = len(meta.get("limits") or []), len(meta.get("requirements") or [])
-            with cols[i % 2].container(border=True):
-                st.markdown(f"**{title}**")
-                st.caption(f"{kind} · {n_lim} hard limit{'s' if n_lim != 1 else ''}"
-                           + (f" · {n_req} required action{'s' if n_req != 1 else ''}" if n_req else ""))
-                if doc_id in added_ids:
-                    st.markdown(":green[:material/check_circle: Added]")
-                elif st.button("Add", key=f"add-{path.name}", icon=":material/add:"):
-                    _added(prof, references.add_reference(prof.procedure, path))
-                    st.rerun()
+    st.subheader("Documents in force")
+    cols = st.columns(2)
+    for i, d in enumerate(sorted(active, key=lambda d: not d.builtin)):
+        n_lim, n_req = len(d.limits), len(d.requirements)
+        with cols[i % 2].container(border=True):
+            st.markdown(f"**{d.title}**" + (f" · rev {d.revision}" if d.revision else ""))
+            st.caption(f"{ui.DOC_KINDS.get(d.kind, 'Document')} · {n_lim} hard limit{'s' if n_lim != 1 else ''}"
+                       + (f" · {n_req} required action{'s' if n_req != 1 else ''}" if n_req else ""))
+            st.markdown(":blue-badge[:material/lock: Built in · always in force]" if d.builtin
+                        else ":gray-badge[:material/upload: Uploaded]")
 
     with st.expander("Upload your own document", icon=":material/upload:"):
         st.caption("A Markdown file with its limits listed at the top (see the samples), or a PDF plus a "
@@ -89,12 +79,17 @@ def render() -> None:
                 path.write_bytes(up.getvalue())
                 if lim is not None:
                     path.with_suffix(".limits.yaml").write_bytes(lim.getvalue())
-                doc = references.add_reference(prof.procedure, path)
+                try:
+                    doc = references.add_reference(prof.procedure, path)
+                except references.BuiltinDocument as e:
+                    st.error(f"{e}. Give your document a different `id` to add it alongside.",
+                             icon=":material/lock:")
+                    return
             _added(prof, doc)
             st.rerun()
 
     old = [d for d in docs if not d.active]
     if old:
         st.caption("Replaced by newer revisions: " + ", ".join(d.label for d in old))
-    if added_ids:
+    if active:
         ui.link_button("guidelines", "Open the guidelines", key="refs-next", primary=False)

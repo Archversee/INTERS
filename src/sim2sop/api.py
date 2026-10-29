@@ -88,7 +88,10 @@ async def add_ref(profile: str, file: UploadFile = File(...), limits: UploadFile
         path = _save_upload(file, Path(tmp))
         if limits is not None:
             _save_upload(limits, Path(tmp), path.with_suffix(".limits.yaml").name)
-        doc = references.add_reference(p.procedure, path)
+        try:
+            doc = references.add_reference(p.procedure, path)
+        except references.BuiltinDocument as e:
+            raise HTTPException(409, str(e)) from None
     return doc
 
 

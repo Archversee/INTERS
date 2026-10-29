@@ -63,5 +63,6 @@ with st.sidebar:
     with st.popover("Start over", icon=":material/restart_alt:", width="stretch"):
         ui.start_over(ui.profile())
 
+ui.ensure_rules(ui.profile())   # the built-in official rules are always in force
 ui.show_queued()   # review popup / toast from the last action, on whatever page is open
 nav.run()

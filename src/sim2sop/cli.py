@@ -51,7 +51,10 @@ def cmd_ingest(args):
 def cmd_add_reference(args):
     profile = load_profile(args.profile)
     for f in args.files:
-        doc = references.add_reference(profile.procedure, Path(f))
+        try:
+            doc = references.add_reference(profile.procedure, Path(f))
+        except references.BuiltinDocument as e:
+            sys.exit(str(e))
         print(f"Added {doc.label} [{doc.kind}]: {len(doc.limits)} limits, {len(doc.requirements)} requirements")
 
 

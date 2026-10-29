@@ -25,6 +25,10 @@ TODO(ai): extract limits from unstructured PDFs with the LLM, then have an instr
 
 Adding a document with an `id` that is already in the library supersedes the older
 revision, which stays in the manifest as inactive (history).
+
+Built-in documents (references/<domain>/, the procedure's own rules) are kept in force by
+`sync_builtin`: always in the library, re-added when their file changes, and never removed
+or replaced by an upload.
 """
 
 from __future__ import annotations
@@ -103,11 +107,19 @@ def _save(procedure: str, docs: list[RefDoc]) -> None:
         json.dumps([d.model_dump(mode="json") for d in docs], indent=2), encoding="utf-8")
 
 
-def add_reference(procedure: str, path: Path) -> RefDoc:
+class BuiltinDocument(ValueError):
+    """A built-in document cannot be removed or replaced."""
+
+
+def add_reference(procedure: str, path: Path, builtin: bool = False) -> RefDoc:
     """Copy a reference document into the library (read-only from here on)."""
     path = Path(path)
     meta = read_doc_meta(path)
     doc_id = str(meta.get("id") or path.stem)
+    docs = list_references(procedure, active_only=False)
+    locked = next((d for d in docs if d.id == doc_id and d.active and d.builtin), None)
+    if locked and not builtin:
+        raise BuiltinDocument(f"{locked.title} is built in: it is always in force and cannot be replaced")
     rev = str(meta.get("revision") or "")
     stored = f"{doc_id}{'__' + re.sub(r'[^A-Za-z0-9.-]', '_', rev) if rev else ''}{path.suffix}"
     d = library_dir(procedure)
@@ -117,8 +129,8 @@ def add_reference(procedure: str, path: Path) -> RefDoc:
     if sidecar.exists():
         shutil.copyfile(sidecar, (d / stored).with_suffix(".limits.yaml"))
     new = _to_refdoc(meta, stored, path.stem)
+    new.builtin = builtin
 
-    docs = list_references(procedure, active_only=False)
     for old in docs:
         if old.id == new.id and old.active:
             old.active = False  # superseded by the new revision
@@ -129,7 +141,28 @@ def add_reference(procedure: str, path: Path) -> RefDoc:
 
 def remove_reference(procedure: str, doc_id: str) -> None:
     docs = list_references(procedure, active_only=False)
+    if any(d.id == doc_id and d.builtin for d in docs):
+        raise BuiltinDocument(f"{doc_id} is built in and cannot be removed")
     _save(procedure, [d for d in docs if d.id != doc_id])
+
+
+def builtin_files(folder: Path) -> list[Path]:
+    """The documents shipped with a procedure (references/<domain>/; the README is not one)."""
+    return [p for p in sorted(Path(folder).glob("*.md")) if p.name.lower() != "readme.md"]
+
+
+def sync_builtin(procedure: str, folder: Path) -> list[RefDoc]:
+    """Keep every built-in document in force: in the library, active, and identical to its
+    file (an edited file is added again). Returns the documents (re)added."""
+    active = {d.id: d for d in list_references(procedure)}
+    added = []
+    for path in builtin_files(folder):
+        have = active.get(str(read_doc_meta(path).get("id") or path.stem))
+        stored = library_dir(procedure) / have.file if have else None
+        if have and have.builtin and stored.exists() and stored.read_bytes() == path.read_bytes():
+            continue
+        added.append(add_reference(procedure, path, builtin=True))
+    return added
 
 
 def clear_references(procedure: str) -> None:

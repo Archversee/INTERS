@@ -62,6 +62,8 @@ sim2sop add-reference air_c172_circuit references/air/c172_poh_notes.md referenc
 sim2sop references air_c172_circuit
 ```
 
+In the app, the documents in `references/<domain>/` are **built in**: they are added automatically, re-added when their file is edited, and cannot be removed or replaced (Start over keeps them). Edit those files to change the rules. The CLI demo still adds them by hand to show unchecked → checked.
+
 Documents are copied into `data/references/<procedure>/` and never modified. Limits and required actions go in the document's YAML front matter; for a PDF, put the same YAML in a `<name>.limits.yaml` file next to it:
 
 ```yaml

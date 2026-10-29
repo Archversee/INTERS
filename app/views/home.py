@@ -40,8 +40,8 @@ def render() -> None:
             a, b = st.columns(2)
             with a:
                 if st.button("Load sample data", type="primary", icon=":material/auto_awesome:", width="stretch",
-                             help=f"Five generated instructor {ui.noun(2)} and the sample official documents. "
-                                  "The guidelines are created straight away."):
+                             help=f"Five generated instructor {ui.noun(2)}, checked against the built-in "
+                                  "official rules. The guidelines are created straight away."):
                     ui.load_sample(prof)
                     st.rerun()
             with b:
