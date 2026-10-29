@@ -91,7 +91,8 @@ class RelativeHeadingSpec(BaseModel):
 class TrackFrameSpec(BaseModel):
     """Position as ground track in a frame anchored where `anchor` first becomes true
     (e.g. the take-off roll): `along` the anchor heading and `offset` across it
-    (absolute distance; `side` is signed, + = right). Uses lat/lon if given, else x/y in m."""
+    (absolute distance; `side` is signed, + = right). Uses lat/lon if given, else x/y in m.
+    `backward` measures `along` behind the anchor (distance reversed)."""
 
     along: str
     offset: str
@@ -103,6 +104,7 @@ class TrackFrameSpec(BaseModel):
     x: str | None = None
     y: str | None = None
     unit: Literal["nm", "m"] = "nm"
+    backward: bool = False
     anchor_window_s: float = 5.0
 
 
@@ -165,6 +167,13 @@ class Profile(BaseModel):
     def label(self, signal: str) -> str:
         spec = self.signals.get(signal)
         return (spec.label if spec and spec.label else signal)
+
+    @property
+    def derived_signals(self) -> set[str]:
+        """Signals computed from the telemetry rather than read from it."""
+        d = self.derived
+        return ({r.name for r in d.relative_heading}
+                | {x for t in d.track_frame for x in (t.along, t.offset, t.side) if x})
 
     @property
     def phase_names(self) -> list[str]:

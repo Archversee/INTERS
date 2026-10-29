@@ -135,7 +135,8 @@ def build_consensus(runs: list[RunRecord]) -> tuple[list[ConsensusItem], RunReco
                 items[i].events[run.run_id] = run.events[j]
                 used.add(j)
         # Unmatched events: same action at a slightly different time (DTW paired it with a
-        # neighbour), or a technique step the anchor did not fly.
+        # neighbour, e.g. in a run made longer by an extra step), or a technique step the
+        # anchor did not fly.
         nearest = {j: i for i, j in path}
         for j, ev in enumerate(run.events):
             if j in used:
@@ -144,7 +145,7 @@ def build_consensus(runs: list[RunRecord]) -> tuple[list[ConsensusItem], RunReco
             t_anchor = items[slot].t_anchor if items else ev.t
             home = min((it for it in items + extras
                         if it.key == ev.key and run.run_id not in it.events
-                        and abs(it.t_anchor - t_anchor) <= window),
+                        and (abs(it.t_anchor - t_anchor) <= window or it.phase == (ev.phase or ""))),
                        key=lambda it: abs(it.t_anchor - t_anchor), default=None)
             if home is None:
                 home = ConsensusItem(key=ev.key, phase=ev.phase or "", kind=ev.kind,

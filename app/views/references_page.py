@@ -24,10 +24,10 @@ def _rules(prof, active) -> None:
     reqs = [(d, r) for d in active for r in d.requirements]
     st.subheader(f"Rules in force ({len(limits) + len(reqs)})")
     if not limits and not reqs:
-        st.info("No rules yet. Add the POH and the aerodrome SOP below to check the guidelines against "
+        st.info("No rules yet. Add the sample official documents below to check the guidelines against "
                 "official limits.", icon=":material/info:")
         return
-    st.caption("The guidelines never go past these. A flight that does is flagged, and its value is left out "
+    st.caption(f"The guidelines never go past these. A {ui.noun()} that does is flagged, and its value is left out "
                "of the typical range.")
     if limits:
         st.dataframe(pd.DataFrame([{
@@ -48,7 +48,7 @@ def _rules(prof, active) -> None:
 def render() -> None:
     prof = ui.profile()
     st.title(":material/menu_book: Official documents")
-    st.write("The aircraft manual (POH) and the standard operating procedures are the authority. They set the "
+    st.write("The official manuals and standard operating procedures are the authority. They set the "
              "**hard limits** the guidelines must stay inside. They are only read, never changed.")
     st.caption("Optional: without them, guidelines are still created but marked *Unchecked*. "
                "Adding a document re-checks the guidelines straight away.")

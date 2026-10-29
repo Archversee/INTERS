@@ -36,7 +36,7 @@ pytest
 | 2. Add reference SOPs | v2 | C172 POH + aerodrome SOP: each guideline shows its hard limit. Run 1 selects flaps 20 at 89 kt; the value is **clipped to Vfe 85 kt** and flagged |
 | 3. More runs | v3 | 5 runs: typical ranges about 2× tighter, short-final power correction becomes a technique note, the overspeed run is **excluded** from the flaps-20 range |
 | 4. Instructor edit | v4, v5 | Edit the Flaps 10° guideline; the next update applies the same wording to Flaps 20° and 30° |
-| 5. Other domains | | Land and sea adapters and profiles exist; their generators are still TODO |
+| 5. Other domains | | Land (parallel parking, CARLA format) has a generator and sample rules: pick it in the app's sidebar, or `sim2sop generate-data land`. Sea is still TODO |
 
 Each version is written to `data/guidelines/<procedure>/v<N>.html`. Every step in the demo is auto-approved; in real use the instructor approves or rejects each change.
 
@@ -136,7 +136,7 @@ sim2sop show | diff A B | export [--pdf] | references | reset [--references --me
 
 Done and tested (air): the generator with the overspeed scenario and the in-app flight generator, MSFS adapter, ground track, phases, events, annotation matching, reference library and limits, consensus with typical ranges, change detection, update with reasons, approval, correction memory, RAG, verifier loop, HTML, CLI, API and UI.
 
-- **Data:** land (CARLA) and sea (NMEA) generators. Their adapters and profiles exist but are untested, and the land and sea folders have no reference SOPs yet. Confirm MSFS sign conventions against a real capture.
+- **Data:** sea (NMEA) generator; its adapter and profile exist but are untested, and the sea folder has no reference SOPs yet. Land (parallel parking) has a generator, sample rules (`references/land/`, placeholders) and tests, but not a real CARLA capture yet: confirm `MAX_STEER_DEG` and the light-state bits. Confirm MSFS sign conventions against a real capture.
 - **AI:** pre-test Qwen 2.5 7B vs Llama 3.1 8B. Replace the placeholder references with real POH and aerodrome SOP extracts. Optionally extract limits from PDFs with the LLM, with instructor confirmation.
 - **Learning:** student grading and a "Common mistakes" section (stretch).
 - **Product:** per-step charts in the HTML (the UI already has them), quick-reference cards, PDF on the demo machine.

@@ -1,4 +1,4 @@
-"""Advanced: raw flight data with detected phases and actions."""
+"""Advanced: raw run data with detected phases and actions."""
 
 from __future__ import annotations
 
@@ -12,14 +12,14 @@ from sim2sop import storage
 
 def render() -> None:
     prof = ui.profile()
-    st.title(":material/monitoring: Flight data explorer")
-    st.write("What the system extracted from one flight: the phases it detected, the actions it found, and "
+    st.title(f":material/monitoring: {ui.noun(cap=True)} data explorer")
+    st.write(f"What the system extracted from one {ui.noun()}: the phases it detected, the actions it found, and "
              "which spoken callout explains each action. The AI never sees this raw data — only the action list.")
     runs = storage.list_runs(prof.procedure)
     if not runs:
-        st.info("No flights yet.", icon=":material/info:")
+        st.info(f"No {ui.noun(2)} yet.", icon=":material/info:")
         return
-    rid = st.selectbox("Flight", [r.run_id for r in runs], format_func=ui.run_title)
+    rid = st.selectbox(ui.noun(cap=True), [r.run_id for r in runs], format_func=ui.run_title)
     rec = next(r for r in runs if r.run_id == rid)
     df = ui.telemetry(prof.procedure, rid)
     options = [c for c in df.columns if c != "t" and c in prof.signals]

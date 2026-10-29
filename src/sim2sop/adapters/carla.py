@@ -10,7 +10,10 @@ Expected CSV columns (one row per world tick), named after the CARLA API fields:
   control.gear, control.reverse, control.hand_brake
   light_state                       carla.VehicleLightState bitmask (optional)
 
-TODO(data): not yet exercised by generated data; build the land generator against this.
+Speed is a magnitude (reverse says which way). steer_lock turns the steering input into
+the positions a driving instructor talks about: -1 full left lock, 0 straight, 1 full right
+lock (in between holds the last of those).
+TODO(data): confirm MAX_STEER_DEG and the light_state bits against a real capture.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from sim2sop.adapters.base import Adapter, find_file
 
 MAX_STEER_DEG = 70.0  # front-wheel angle at steer = 1.0; vehicle-specific
 LEFT_BLINKER, RIGHT_BLINKER = 0x20, 0x40  # carla.VehicleLightState bits
+LOCK, STRAIGHT = 0.5, 0.1   # |control.steer| counted as full lock / wheels straight
 
 
 class CarlaAdapter(Adapter):
@@ -37,15 +41,19 @@ class CarlaAdapter(Adapter):
 
         speed = np.hypot(raw["velocity.x"], raw["velocity.y"]) * 3.6
         reverse = col("control.reverse")
+        steer = raw["control.steer"].astype(float)
+        lock = pd.Series(np.select([steer <= -LOCK, steer >= LOCK, steer.abs() <= STRAIGHT], [-1.0, 1.0, 0.0],
+                                   np.nan), index=raw.index).ffill().fillna(0.0)
         out = pd.DataFrame({
             "t": raw["timestamp"].astype(float),
             "x_m": raw["location.x"],
             "y_m": -raw["location.y"],  # to right-handed
             "heading_deg": (-raw["rotation.yaw"] + 90.0) % 360.0,
-            "speed_kmh": speed * np.where(reverse > 0, -1.0, 1.0),
+            "speed_kmh": speed,
             "throttle": raw["control.throttle"],
             "brake": raw["control.brake"],
-            "steer_deg": raw["control.steer"] * MAX_STEER_DEG,
+            "steer_deg": steer * MAX_STEER_DEG,
+            "steer_lock": lock,
             "gear": col("control.gear"),
             "reverse": reverse,
             "hand_brake": col("control.hand_brake"),

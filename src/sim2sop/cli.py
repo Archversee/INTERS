@@ -223,7 +223,7 @@ def cmd_demo(args):
             print(f"     {s.id} {s.action}")
     publish()
 
-    print("5. Other domains: land / sea adapters and profiles exist; generators are TODO")
+    print("5. Other domains: land (parallel parking) has a generator too: sim2sop generate-data land; sea is TODO")
     print(f"\nEdits per version: {edits_per_version(proc)}")
     print(f"Open: {store.html_path(store.latest(proc))}")
 

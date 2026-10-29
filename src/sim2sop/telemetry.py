@@ -13,7 +13,7 @@ def validate(df: pd.DataFrame, profile: Profile) -> list[str]:
     """Return warnings for missing signals; raise if there is no time column."""
     if "t" not in df.columns:
         raise ValueError("telemetry must have a 't' column (seconds from run start)")
-    missing = [s for s in profile.signals if s not in df.columns]
+    missing = [s for s in profile.signals if s not in df.columns and s not in profile.derived_signals]
     return [f"signal {s!r} missing from telemetry" for s in missing]
 
 
@@ -82,7 +82,7 @@ def _add_track_frame(df: pd.DataFrame, spec) -> None:
     scale = 1852.0 if spec.unit == "nm" else 1.0
     along = (dx * np.sin(h) + dy * np.cos(h)) / scale
     side = (dx * np.cos(h) - dy * np.sin(h)) / scale   # + = right of the anchor heading
-    df[spec.along] = along
+    df[spec.along] = -along if spec.backward else along
     df[spec.offset] = np.abs(side)
     if spec.side:
         df[spec.side] = side

@@ -16,15 +16,15 @@ st.set_page_config(page_title="Sim-to-SOP", page_icon=":material/flight_takeoff:
 
 ui.PAGES.update({
     "home": st.Page(home.render, title="Home", icon=":material/home:", url_path="home", default=True),
-    "runs": st.Page(runs.render, title="1 · Instructor flights", icon=":material/flight:", url_path="flights"),
+    "runs": st.Page(runs.render, title=f"1 · Instructor {ui.noun(2)}", icon=":material/flight:", url_path="flights"),
     "references": st.Page(references_page.render, title="2 · Official documents", icon=":material/menu_book:",
                           url_path="documents"),
     "guidelines": st.Page(guidelines.render, title="3 · Guidelines", icon=":material/checklist:",
                           url_path="guidelines"),
     "progress": st.Page(progress.render, title="Progress", icon=":material/trending_up:", url_path="progress"),
-    "generator": st.Page(generator.render, title="Flight generator", icon=":material/science:",
+    "generator": st.Page(generator.render, title=f"{ui.noun(cap=True)} generator", icon=":material/science:",
                          url_path="generator"),
-    "explorer": st.Page(explorer.render, title="Flight data explorer", icon=":material/monitoring:",
+    "explorer": st.Page(explorer.render, title=f"{ui.noun(cap=True)} data explorer", icon=":material/monitoring:",
                         url_path="explorer"),
 })
 nav = st.navigation({
@@ -58,7 +58,7 @@ with st.sidebar:
             st.caption(f"Server: {config.OLLAMA_URL}")
         elif provider != "none":
             st.text_input("Model", key="llm_model")
-        st.caption("The AI only words the guidelines. Every number is checked against the flight data, "
+        st.caption(f"The AI only words the guidelines. Every number is checked against the {ui.noun()} data, "
                    "and limits always come from the official documents.")
     with st.popover("Start over", icon=":material/restart_alt:", width="stretch"):
         ui.start_over(ui.profile())

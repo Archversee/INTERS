@@ -32,7 +32,7 @@ def limit_text(step: Step) -> str:
 
 
 # Units that say what the number is on their own ("74 kt" needs no "airspeed").
-SELF_EXPLANATORY = {"kt", "ft", "fpm", "%", "rpm"}
+SELF_EXPLANATORY = {"kt", "ft", "fpm", "%", "rpm", "km/h"}
 
 
 class TemplateWriter:

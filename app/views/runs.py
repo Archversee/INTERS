@@ -1,4 +1,4 @@
-"""Step 1: instructor flights. Flights come in only by uploading recorded data."""
+"""Step 1: instructor runs (flights, drives, ...). They come in only by uploading recorded data."""
 
 from __future__ import annotations
 
@@ -52,14 +52,15 @@ def _ingest(prof, files, notes) -> list[str]:
 def _upload(prof) -> None:
     n = st.session_state.setdefault("upload_n", 0)   # bumped after each upload to clear the boxes
     with st.container(border=True):
-        st.markdown("**Upload flight data**")
-        st.caption("A **.zip** of one or more flight folders (as downloaded from the Flight generator), or a "
-                   "simulator **telemetry CSV**. The guidelines update straight away and show you what changed.")
-        files = st.file_uploader("Flight data", type=["zip", "csv", "parquet"], accept_multiple_files=True,
-                                 key=f"up-{n}", label_visibility="collapsed")
+        st.markdown(f"**Upload {ui.noun()} data**")
+        st.caption(f"A **.zip** of one or more {ui.noun()} folders (as downloaded from the {ui.noun(cap=True)} "
+                   "generator), or a simulator **telemetry CSV**. The guidelines update straight away and show you "
+                   "what changed.")
+        files = st.file_uploader(f"{ui.noun(cap=True)} data", type=["zip", "csv", "parquet"],
+                                 accept_multiple_files=True, key=f"up-{n}", label_visibility="collapsed")
         notes = None
         if len(files) == 1 and not files[0].name.lower().endswith(".zip"):
-            notes = st.file_uploader("Callouts for this flight (annotations.json, optional)", type=["json"],
+            notes = st.file_uploader(f"Callouts for this {ui.noun()} (annotations.json, optional)", type=["json"],
                                      key=f"up-notes-{n}")
         if st.button("Add to the guidelines", type="primary", icon=":material/upload:", disabled=not files):
             try:
@@ -69,27 +70,27 @@ def _upload(prof) -> None:
                 return
             if added:
                 st.session_state["upload_n"] = n + 1
-                title = f"{ui.run_title(added[0])} added" if len(added) == 1 else f"{len(added)} flights added"
+                title = f"{ui.run_title(added[0])} added" if len(added) == 1 else f"{len(added)} {ui.noun(2)} added"
                 ui.refresh_guidelines(prof, title)
                 st.rerun()
-        st.caption("Need data? Make a flight in the **Flight generator** and add it from there. The file "
-                   "format is explained there too.")
-        ui.link_button("generator", "Open the Flight generator", icon=":material/science:", key="runs-gen",
-                       primary=False)
+        st.caption(f"Need data? Make a {ui.noun()} in the **{ui.noun(cap=True)} generator** and add it from "
+                   "there. The file format is explained there too.")
+        ui.link_button("generator", f"Open the {ui.noun(cap=True)} generator", icon=":material/science:",
+                       key="runs-gen", primary=False)
 
 
 def render() -> None:
     prof = ui.profile()
-    st.title(":material/flight: Instructor flights")
-    st.write("Each flight is one instructor flying the procedure in the simulator, with their spoken "
-             "callouts. The more flights you add, the better the guidelines describe the typical technique.")
+    st.title(f":material/flight: Instructor {ui.noun(2)}")
+    st.write(f"Each {ui.noun()} is one instructor doing the procedure in the simulator, with their spoken "
+             f"callouts. The more {ui.noun(2)} you add, the better the guidelines describe the typical technique.")
     ui.pending_banner(prof, key="runs-review")
     _upload(prof)
 
     runs = storage.list_runs(prof.procedure)
-    st.subheader(f"{len(runs)} flight{'s' if len(runs) != 1 else ''} recorded")
+    st.subheader(f"{len(runs)} {ui.noun(len(runs))} recorded")
     if not runs:
-        st.info("No flights yet. Upload the first flight — the guidelines are created from it automatically.",
+        st.info(f"No {ui.noun(2)} yet. Upload the first {ui.noun()} — the guidelines are created from it automatically.",
                 icon=":material/info:")
         return
     rows = []
@@ -98,7 +99,7 @@ def render() -> None:
         unmatched = [a.text for a in r.annotations if a.event_id is None]
         mins, secs = divmod(int(r.meta.duration_s), 60)
         rows.append({
-            "Flight": ui.run_title(r.run_id),
+            ui.noun(cap=True): ui.run_title(r.run_id),
             "Instructor": ui.instructor_name(r.meta.instructor),
             "Length": f"{mins}:{secs:02d}",
             "Actions found": len(r.events),

@@ -1,5 +1,4 @@
-# Land: parallel parking, recorded from CARLA vehicle state.
-# TODO(data): no generator yet; thresholds below are first guesses to tune on generated runs.
+# Land: parallel parking (reverse into a space on the left kerb), recorded from CARLA vehicle state.
 domain: land
 procedure: parallel_park
 title: "Parallel Parking"
@@ -8,34 +7,52 @@ sample_hz: 10
 references: land
 style: >
   Write for a learner driver preparing for the Singapore driving test. Short imperative
-  sentences. Speeds in km/h, distances in metres, steering as wheel angle in degrees.
+  sentences. Speeds in km/h, distances in metres, angles in degrees.
 
 signals:
   x_m:             {category: pose, unit: m, decimals: 1}
   y_m:             {category: pose, unit: m, decimals: 1}
   heading_deg:     {category: pose, unit: "°", label: heading, tolerance: 5, angle: true}
+  kerb_angle_deg:  {category: pose, unit: "°", label: angle to the kerb, tolerance: 5}
+  back_m:          {category: pose, unit: m, label: from where you stopped, tolerance: 0.3, decimals: 1}
   speed_kmh:       {category: motion, unit: km/h, label: speed, tolerance: 2}
   throttle:        {category: control, label: throttle, decimals: 2}
   brake:           {category: control, label: brake, decimals: 2}
   steer_deg:       {category: control, unit: "°", label: steering angle, tolerance: 10}
+  steer_lock:      {category: discrete, label: steering}
   gear:            {category: discrete, label: gear}
   reverse:         {category: discrete, label: reverse}
   hand_brake:      {category: discrete, label: handbrake}
   indicator_left:  {category: discrete, label: left indicator}
   indicator_right: {category: discrete, label: right indicator}
 
-context: [speed_kmh, steer_deg, heading_deg]
-trigger_signals: [speed_kmh, steer_deg]
-result_signals: [speed_kmh, heading_deg]
+context: [speed_kmh, back_m, kerb_angle_deg, steer_lock, reverse]
+trigger_signals: [speed_kmh]
+result_signals: [speed_kmh, kerb_angle_deg]
 
+derived:
+  relative_heading:
+    # The kerb line = heading when reverse is first selected (stopped alongside the parked car).
+    - {name: kerb_angle_deg, signal: heading_deg, anchor: "reverse == 1", anchor_window_s: 1}
+  track_frame:
+    # Distance reversed from the stop alongside the parked car.
+    - {along: back_m, offset: back_offset_m, anchor: "reverse == 1", heading_signal: heading_deg,
+       x: x_m, y: y_m, unit: m, backward: true, anchor_window_s: 1}
+
+# Ordered; the segmenter enters phase k+1 once its `enter` expression has held for hold_s.
 phases:
-  - {name: start}
-  - {name: pull_out, enter: "hand_brake == 0 and speed_kmh > 2", hold_s: 1}
-  - {name: approach, enter: "speed_kmh > 8", hold_s: 2}
-  - {name: manoeuvre, enter: "reverse == 1", hold_s: 1}
-  - {name: park, enter: "abs(speed_kmh) < 0.5 and hand_brake == 1", hold_s: 1}
+  - {name: start, description: "Stationary, ready to move off"}
+  - {name: approach, enter: "hand_brake == 0 and speed_kmh > 2", hold_s: 1,
+     description: "Drive up and stop alongside the parked car"}
+  - {name: reverse_in, enter: "reverse == 1", hold_s: 1, trigger_signals: [back_m, kerb_angle_deg],
+     result_signals: [kerb_angle_deg], description: "Reverse into the space"}
+  - {name: adjust, enter: "reverse == 0 and hand_brake == 0 and speed_kmh > 0.5", hold_s: 1,
+     description: "Move forward to centre the car in the space"}
+  - {name: secure, enter: "speed_kmh < 0.3 and hand_brake == 1", hold_s: 1,
+     description: "Secure the car"}
 
-segmentation_signals: [speed_kmh, steer_deg]
+# No change-point snapping: the gear and handbrake mark the phase boundaries exactly.
+segmentation_signals: []
 
 events:
   settle_s: 3
@@ -44,19 +61,20 @@ events:
     indicator_right: {name: Right indicator, states: {0: "OFF", 1: "ON"}}
     reverse:         {name: "", states: {0: Select drive, 1: Select reverse}}
     hand_brake:      {name: Handbrake, states: {0: RELEASE, 1: APPLY}}
-  controls:
-    - {signal: steer_deg, name: Steering, min_step: 15, settle_s: 1.5}
-    - {signal: brake, name: Brake, min_step: 0.3, settle_s: 1}
-  turns: {signal: heading_deg, min_change_deg: 20, min_rate_dps: 3, min_duration_s: 2}
+    steer_lock:      {name: "", states: {-1: Full left lock, 0: Straighten the wheels, 1: Full right lock}}
+  thresholds:
+    # Different levels keep the two stops apart (a threshold's key is signal + level).
+    - {signal: speed_kmh, below: 0.5, label: Stop alongside the parked car, phases: [approach], hold_s: 1}
+    - {signal: speed_kmh, below: 0.3, label: Stop parallel to the kerb, phases: [reverse_in], hold_s: 1}
 
-annotation_window_s: 6
+annotation_window_s: 4
 annotation_keywords:
-  blind: [indicator_left, indicator_right]
   signal: [indicator_left, indicator_right]
   indicat: [indicator_left, indicator_right]
   revers: [reverse]
-  steer: [steer_deg]
-  lock: [steer_deg]
-  stop: [brake, hand_brake]
+  drive: [reverse]
+  lock: [steer_lock]
+  steer: [steer_lock]
+  straight: [steer_lock]
+  stop: [speed_kmh]
   handbrake: [hand_brake]
-

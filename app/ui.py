@@ -25,12 +25,15 @@ PROFILE_NAMES = {
     "land_parallel_park": "🚗 Land · Parallel parking",
     "sea_harbour_exit": "🚢 Sea · Harbour exit",
 }
+# What one recorded run is called in each domain, and the domains the generator can make.
+NOUNS = {"air": "flight", "land": "drive", "sea": "run"}
+GENERATED = {"air", "land"}
 PROVIDERS = {"ollama": "Ollama (local / LAN)", "openai": "OpenAI-compatible API",
              "anthropic": "Anthropic API", "none": "No AI (built-in template)"}
 DOC_KINDS = {"poh": "Aircraft manual (POH)", "sop": "Standard operating procedure",
              "regulation": "Regulation", "handbook": "Handbook (guidance only)", "other": "Document"}
 FLAG_LABELS = {
-    "limit_violation": ("Instructor flights that broke a hard limit", ":material/warning:"),
+    "limit_violation": ("Instructor runs that broke a hard limit", ":material/warning:"),
     "excluded": ("Values left out of a typical range (they broke a limit)", ":material/remove_circle:"),
     "clipped": ("Values capped at a hard limit", ":material/vertical_align_top:"),
     "technique_change": ("Technique changes detected", ":material/swap_horiz:"),
@@ -79,6 +82,13 @@ def telemetry(procedure: str, run_id: str) -> pd.DataFrame:
 
 # --- wording --------------------------------------------------------------------------------
 
+def noun(n: int = 1, cap: bool = False) -> str:
+    """What a recorded run is called for the selected procedure: "flight", "drives", ..."""
+    name = st.session_state.get("profile_name") or "air"
+    word = NOUNS.get(name.split("_", 1)[0], "run") + ("" if n == 1 else "s")
+    return word.capitalize() if cap else word
+
+
 def phase_title(name: str) -> str:
     return name.replace("_", " ").title()
 
@@ -86,8 +96,8 @@ def phase_title(name: str) -> str:
 def run_title(run_id: str) -> str:
     n = run_id.rsplit("_", 1)[-1]
     if run_id.startswith("generated_"):
-        return f"Generated flight (seed {n})"
-    return f"Flight {int(n)}" if n.isdigit() else run_id
+        return f"Generated {noun()} (seed {n})"
+    return f"{noun(cap=True)} {int(n)}" if n.isdigit() else run_id
 
 
 def instructor_name(raw: str | None) -> str:
@@ -127,10 +137,10 @@ def sample_dir(prof: Profile) -> Path:
 
 def start_over(prof: Profile) -> None:
     """Delete everything for the procedure, behind a confirmation (sidebar popover)."""
-    st.caption("Deletes every flight, guideline version, official document, instructor correction and "
-               "generated flight for this procedure.")
-    rules = st.checkbox("Load the sample official rules again (POH and aerodrome SOP)", value=True,
-                        key="reset-rules", help="Start with the hard limits already in place, ready for the first flight.")
+    st.caption(f"Deletes every {noun()}, guideline version, official document, instructor correction and "
+               f"generated {noun()} for this procedure.")
+    rules = st.checkbox("Load the sample official rules again", value=True, key="reset-rules",
+                        help=f"Start with the hard limits already in place, ready for the first {noun()}.")
     sure = st.checkbox("Yes, delete all the data", key="reset-sure")
     if st.button("Delete all data", type="primary", icon=":material/delete_forever:", disabled=not sure,
                  key="reset-go", width="stretch"):
@@ -141,22 +151,22 @@ def start_over(prof: Profile) -> None:
 
 def load_sample(prof: Profile) -> None:
     """First-run shortcut: the sample official documents and five generated instructor
-    flights, then the guidelines are created and the review pops up."""
-    from sim2sop.generate.air import generate_air_runs
+    runs, then the guidelines are created and the review pops up."""
+    from sim2sop.generate import generate
     from sim2sop.ingest import ingest_run
 
     added = {d.id for d in references.list_references(prof.procedure)}
     for path in sorted((config.REFERENCES_DIR / prof.references).glob("*.md")):
         if path.name.lower() != "readme.md" and references.read_doc_meta(path).get("id") not in added:
             references.add_reference(prof.procedure, path)
-    with st.spinner("Generating five instructor flights…"):
-        for run_dir in generate_air_runs(sample_dir(prof), n=5):
+    with st.spinner(f"Generating five instructor {noun(2)}…"):
+        for run_dir in generate(prof.domain, n=5, out_dir=sample_dir(prof)):
             ingest_run(run_dir, prof)
-    refresh_guidelines(prof, "Sample data loaded: 5 flights and the official documents")
+    refresh_guidelines(prof, f"Sample data loaded: 5 {noun(2)} and the official documents")
 
 
 def reset_all(prof: Profile, load_rules: bool = True) -> None:
-    """Delete every flight, guideline version, document, correction and generated flight for
+    """Delete every run, guideline version, document, correction and generated run for
     the procedure; optionally load the sample official rules again."""
     storage.delete_runs(prof.procedure)
     shutil.rmtree(config.GUIDELINES_DIR / prof.procedure, ignore_errors=True)
@@ -184,7 +194,7 @@ def run_build(label: str, fn):
                        "wording each guideline, which can take a while per step. If it stops answering, the "
                        "built-in wording is used for the rest. For instant results, switch the AI writer to "
                        "*No AI* in the sidebar.")
-        bar = st.progress(0.0, text="Analysing the flights and checking the official limits…")
+        bar = st.progress(0.0, text=f"Analysing the {noun(2)} and checking the official limits…")
 
         def progress(i: int, n: int, msg: str) -> None:
             bar.progress(min(1.0, (i + 1) / max(n, 1)), text=f"{msg}  ({i + 1} of {n})")
@@ -278,8 +288,8 @@ def review_dialog(version: int, title: str) -> None:
     _cited(doc, prev)
 
     if prev is None:
-        st.markdown(f"**{len(doc.steps)} new guidelines** from {len(doc.runs)} flight"
-                    f"{'s' if len(doc.runs) != 1 else ''}. Read them through, then publish.")
+        st.markdown(f"**{len(doc.steps)} new guidelines** from {len(doc.runs)} {noun(len(doc.runs))}. "
+                    "Read them through, then publish.")
         with st.expander("All guidelines", expanded=True):
             for phase in doc.phases:
                 steps = doc.steps_in(phase)
@@ -331,10 +341,10 @@ def _publish(prof: Profile, doc: Guidelines, rejects: list[str]) -> None:
 def _review_summary(doc: Guidelines, prev: Guidelines | None) -> None:
     """The headline numbers of the new version (no arrow when nothing moved)."""
     m, pm = doc.metrics, prev.metrics if prev else {}
-    new_flights = len(doc.runs) - len(prev.runs) if prev else 0
+    new_runs = len(doc.runs) - len(prev.runs) if prev else 0
     pts = round((m["mean_confidence"] - pm["mean_confidence"]) * 100) if pm else 0
     c = st.columns(3)
-    c[0].metric("Flights", len(doc.runs), f"+{new_flights}" if new_flights else None)
+    c[0].metric(noun(2, cap=True), len(doc.runs), f"+{new_runs}" if new_runs else None)
     c[1].metric("Guidelines changed" if prev else "New guidelines", len(doc.pending))
     c[2].metric("Confidence", f"{m['mean_confidence']:.0%}", f"{pts:+d} pts" if pts else None)
 
@@ -345,7 +355,7 @@ def _is_capped(s: Step) -> bool:
 
 def _capped(doc: Guidelines, prev: Guidelines | None, prof: Profile) -> None:
     """In plain words: each value this version caps at an official limit, and each new
-    flight that broke a limit (left out of the typical range)."""
+    run that broke a limit (left out of the typical range)."""
     by_id = {s.id: s for s in doc.steps}
     for s in doc.pending:
         broke = [run_title(f.run_id) for f in doc.flags if f.kind == "clipped" and f.step_id == s.id and f.run_id]
@@ -392,7 +402,7 @@ def step_badges(s: Step, show_change: bool = True) -> str:
     if s.required_by:
         out.append(":green-badge[Required by SOP]")
     elif s.run_count < 2:
-        out.append(":gray-badge[Seen in 1 flight]")
+        out.append(f":gray-badge[Seen in 1 {noun()}]")
     elif s.mandatory:
         out.append(":blue-badge[Core — every instructor]")
     else:
@@ -411,7 +421,7 @@ def step_badges(s: Step, show_change: bool = True) -> str:
 def guideline_body(s: Step, doc: Guidelines) -> None:
     rows = [(":material/schedule:", "When", s.trigger), (":material/lightbulb:", "Why", s.intent),
             (":material/straighten:", "Typical",
-             s.typical and f"{s.typical} :gray[({len(s.runs)} flight{'s' if len(s.runs) != 1 else ''})]")]
+             s.typical and f"{s.typical} :gray[({len(s.runs)} {noun(len(s.runs))})]")]
     for icon, label, text in rows:
         if text:
             st.markdown(f"{icon} **{label}** — {text}")
@@ -467,7 +477,7 @@ def checklist_line(n: int, s: Step, prof: Profile, show_change: bool = True) -> 
 def step_chart(s: Step, doc: Guidelines, prof: Profile) -> None:
     run_id = s.anchor_run or doc.anchor_run
     if not run_id or run_id not in {r.run_id for r in storage.list_runs(prof.procedure)}:
-        st.caption("No flight data available for a chart.")
+        st.caption(f"No {noun()} data available for a chart.")
         return
     df = telemetry(prof.procedure, run_id)
     window = df[(df["t"] >= s.t - 20) & (df["t"] <= s.t + 20)]

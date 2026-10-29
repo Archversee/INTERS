@@ -26,8 +26,8 @@ def details(step_id: str, version: int) -> None:
 
     c1, c2 = st.columns(2)
     c1.metric("Confidence", f"{s.confidence:.0%}", help="How consistently instructors do this, and how tight "
-              "the typical range is. Rises as more flights are added.")
-    c2.metric("Based on", f"{len(s.runs)} flight{'s' if len(s.runs) != 1 else ''}")
+              f"the typical range is. Rises as more {ui.noun(2)} are added.")
+    c2.metric("Based on", f"{len(s.runs)} {ui.noun(len(s.runs))}")
     if s.reference:
         st.caption(f":material/menu_book: Source: {s.reference.doc} — {s.reference.section}")
     if s.required_by:
@@ -51,27 +51,28 @@ def details(step_id: str, version: int) -> None:
         edited = next(x for x in new.steps if x.id == s.id)
         st.session_state["flash"] = (f"Saved as version {new.version}." if edited.verified else
                                      f"Saved as version {new.version}, but a number in your text does not "
-                                     "match the flight data — see the step's warnings.")
+                                     f"match the {ui.noun()} data — see the step's warnings.")
         # Apply the same wording to similar steps right away; the review pops up if any changed.
         ui.refresh_guidelines(prof, f"Your edit to {s.label}, applied to similar steps")
         st.rerun()
 
 
 def _build_bar(prof, doc) -> None:
-    """Guidelines normally update by themselves when a flight or document is added. This covers
+    """Guidelines normally update by themselves when a run or document is added. This covers
     data added another way (e.g. the command line)."""
     runs = storage.list_runs(prof.procedure)
     if doc is None:
         with st.container(border=True):
-            st.markdown(":material/info: The guidelines are created automatically when you add the first flight.")
-            ui.link_button("runs", "Add flights", key="g-runs")
+            st.markdown(f":material/info: The guidelines are created automatically when you add the first "
+                        f"{ui.noun()}.")
+            ui.link_button("runs", f"Add {ui.noun(2)}", key="g-runs")
         return
     new_runs = [r for r in runs if r.run_id not in doc.runs]
     new_docs = [d for d in references.list_references(prof.procedure) if d.label not in doc.references]
     if new_runs or new_docs:
         with st.container(border=True):
             st.markdown(f":material/update: There is data the guidelines do not include yet "
-                        f"({len(new_runs)} flight(s), {len(new_docs)} document(s)).")
+                        f"({len(new_runs)} {ui.noun(len(new_runs))}, {len(new_docs)} document(s)).")
             if st.button("Update the guidelines", type="primary", icon=":material/auto_awesome:"):
                 ui.refresh_guidelines(prof, "Guidelines updated")
                 st.rerun()
@@ -95,7 +96,7 @@ def render() -> None:
     doc = store.load(prof.procedure, v)
     with top[0]:
         st.markdown(f"**{doc.title}** · version {doc.version} · {ui.mode_title(doc).lower()} from "
-                    f"{len(doc.runs)} flight{'s' if len(doc.runs) != 1 else ''}")
+                    f"{len(doc.runs)} {ui.noun(len(doc.runs))}")
         st.markdown(ui.doc_badges(doc))
     ui.pending_banner(prof, key="g-review")
     st.caption("Advisory guidelines: how instructors typically fly it. Where they differ from an official "
@@ -121,7 +122,7 @@ def render() -> None:
         with st.expander("How to read a guideline", icon=":material/help:"):
             st.markdown(
                 "- **When** — the moment to act. **Why** — the instructor's own callout.\n"
-                "- **Typical** — the range instructors used across the recorded flights.\n"
+                f"- **Typical** — the range instructors used across the recorded {ui.noun(2)}.\n"
                 "- :red[**Hard limit**] — from the official documents; never crossed.\n"
                 "- :blue-badge[Core] every instructor did it · :orange-badge[Technique] only some did · "
                 ":green-badge[Required by SOP] an official document requires it.")
