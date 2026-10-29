@@ -5,6 +5,7 @@ toolbarMode = "viewer"
 [browser]
 gatherUsageStats = false
 
+# "Jet age" palette: space navy, turquoise, coral, amber and violet, on warm paper.
 # Shared by both themes. The app follows the computer's light / dark setting by default.
 [theme]
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
@@ -18,27 +19,44 @@ showSidebarBorder = true
 linkUnderline = false
 
 [theme.light]
-primaryColor = "#2155D6"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F3F6FB"
-textColor = "#0E1A2E"
-borderColor = "#DCE3EE"
-linkColor = "#2155D6"
-chartCategoricalColors = ["#2155D6", "#0EA5B7", "#F08A24", "#8B5CF6", "#16A34A", "#E5484D"]
+primaryColor = "#0B7A7A"
+backgroundColor = "#FBF8F3"
+secondaryBackgroundColor = "#F3EEE5"
+textColor = "#14213D"
+borderColor = "#E3DACB"
+linkColor = "#0B7A7A"
+greenColor = "#2E9E6B"
+redColor = "#D93F47"
+orangeColor = "#C77700"
+violetColor = "#6D4AFF"
+blueColor = "#1F5FA8"
+chartCategoricalColors = ["#0B7A7A", "#F2545B", "#E8A317", "#6D4AFF", "#2E9E6B", "#14213D"]
 
 [theme.light.sidebar]
-backgroundColor = "#F6F8FC"
-secondaryBackgroundColor = "#FFFFFF"
+backgroundColor = "#14213D"
+secondaryBackgroundColor = "#1D2C4E"
+textColor = "#E8ECF4"
+borderColor = "#2B3B60"
+primaryColor = "#F4B740"
+linkColor = "#F4B740"
 
 [theme.dark]
-primaryColor = "#5B8CFF"
-backgroundColor = "#0B1220"
-secondaryBackgroundColor = "#141E33"
-textColor = "#E6ECF5"
-borderColor = "#24304A"
-linkColor = "#7FA6FF"
-chartCategoricalColors = ["#5B8CFF", "#22C3D6", "#FFA94D", "#A78BFA", "#4ADE80", "#FF6B6E"]
+primaryColor = "#16A0A0"
+backgroundColor = "#0D1526"
+secondaryBackgroundColor = "#16213A"
+textColor = "#ECEFF4"
+borderColor = "#27334F"
+linkColor = "#5ED6D6"
+greenColor = "#3CCB8A"
+redColor = "#FF6B70"
+orangeColor = "#F4B740"
+violetColor = "#9B85FF"
+blueColor = "#5B9BEA"
+chartCategoricalColors = ["#2BC4C4", "#FF6B70", "#F4B740", "#9B85FF", "#3CCB8A", "#C9D3E6"]
 
 [theme.dark.sidebar]
-backgroundColor = "#0E1729"
-secondaryBackgroundColor = "#141E33"
+backgroundColor = "#0A1120"
+secondaryBackgroundColor = "#131D33"
+borderColor = "#1E2A44"
+primaryColor = "#F4B740"
+linkColor = "#F4B740"

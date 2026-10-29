@@ -327,7 +327,7 @@ def _form(prof: Profile, sim: Sim) -> None:
         s3.button("Surprise me", icon=":material/shuffle:", on_click=_surprise, args=(sim,), width="stretch",
                   help="Random choices and seed.")
         s4.button(f"Generate {ui.noun()}", type="primary", icon=":material/auto_awesome:", on_click=_generate,
-                  args=(prof, sim), width="stretch")
+                  args=(prof, sim), width="stretch", key="tone-ai-generate")
 
 
 def _zip(run_dir: Path) -> bytes:

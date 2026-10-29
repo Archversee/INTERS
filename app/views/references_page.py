@@ -133,7 +133,7 @@ def _ai_manual(prof) -> None:
         if not ai_on:
             st.caption("Switch the AI writer on in the sidebar to use this.")
         if st.button("Find the rules with AI", type="primary", icon=":material/auto_awesome:",
-                     disabled=not (up and ai_on and title.strip()), key="manual-go"):
+                     disabled=not (up and ai_on and title.strip()), key="tone-ai-manual"):
             folder = config.DATA_DIR / "uploads" / prof.procedure
             folder.mkdir(parents=True, exist_ok=True)
             path = folder / up.name

@@ -47,7 +47,7 @@ def details(step_id: str, version: int) -> None:
     field = st.segmented_control("Part", list(EDITABLE), default="action", format_func=EDITABLE.get,
                                  key=f"edit-field-{s.id}") or "action"
     text = st.text_area("Text", value=getattr(s, field) or "", key=f"edit-{version}-{s.id}-{field}")
-    if st.button("Save edit", type="primary", icon=":material/save:"):
+    if st.button("Save edit", type="primary", icon=":material/save:", key="tone-go-save"):
         new = apply_edit(prof, s.id, field, text, version=version)
         edited = next(x for x in new.steps if x.id == s.id)
         st.session_state["flash"] = (f"Saved as version {new.version}." if edited.verified else
@@ -74,7 +74,8 @@ def _build_bar(prof, doc) -> None:
         with st.container(border=True):
             st.markdown(f"There is data the guidelines do not include yet "
                         f"({len(new_runs)} {ui.noun(len(new_runs))}, {len(new_docs)} document(s)).")
-            if st.button("Update the guidelines", type="primary", icon=":material/auto_awesome:"):
+            if st.button("Update the guidelines", type="primary", icon=":material/auto_awesome:",
+                         key="tone-ai-update"):
                 ui.refresh_guidelines(prof, "Guidelines updated")
                 st.rerun()
 
