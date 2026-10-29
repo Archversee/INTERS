@@ -9,7 +9,9 @@ import pandas as pd
 import streamlit as st
 import ui
 
-from sim2sop import references
+from sim2sop import config, references
+from sim2sop.agent import manuals
+from sim2sop.schema import Limit
 
 
 def _added(prof, doc) -> None:
@@ -68,6 +70,8 @@ def render() -> None:
             st.markdown(":blue-badge[:material/lock: Built in · always in force]" if d.builtin
                         else ":gray-badge[:material/upload: Uploaded]")
 
+    _ai_manual(prof)
+
     with st.expander("Upload your own document", icon=":material/upload:"):
         st.caption("A Markdown file with its limits listed at the top (see the samples), or a PDF plus a "
                    "`.limits.yaml` file. A newer revision of a document replaces the older one.")
@@ -93,3 +97,102 @@ def render() -> None:
         st.caption("Replaced by newer revisions: " + ", ".join(d.label for d in old))
     if active:
         ui.link_button("guidelines", "Open the guidelines", key="refs-next", primary=False)
+
+
+# --- reading a manual with the AI ----------------------------------------------------------------
+
+def _rule_words(prof, p: manuals.Proposal) -> tuple[str, str]:
+    """(the rule in a few words, when it applies)."""
+    if p.kind == "requirement":
+        return f"Must do: {manuals.actions(prof).get(p.key, p.key)}", "—"
+    lim = Limit(**p.as_rule())
+    return ui.limit_name(lim, prof), ui.when_text(lim, prof)
+
+
+def _ai_manual(prof) -> None:
+    """Upload a manual with no limits list; the AI proposes its rules; the instructor ticks the
+    ones to put in force."""
+    ss = st.session_state
+    ai_on = ss.get("llm_provider", config.LLM_PROVIDER) != "none"
+    with st.container(border=True):
+        st.markdown("**:material/smart_toy: Read a manual with AI**")
+        st.caption("Upload a manual without a limits list (PDF, Markdown or text). The AI reads each section that "
+                   "states a rule and proposes hard limits and required actions in this procedure's terms. A "
+                   "proposal must quote the manual word for word and use a value written in that quote, or it is "
+                   "set aside. Nothing is in force until you tick it and add the manual.")
+        n = ss.setdefault("manual_n", 0)
+        up = st.file_uploader("Manual", type=["pdf", "md", "txt"], key=f"manual-up-{n}")
+        c1, c2, c3 = st.columns([3, 2, 1])
+        title = c1.text_input("Title", value=Path(up.name).stem.replace("_", " ") if up else "",
+                              key=f"manual-title-{n}")
+        kinds = list(ui.DOC_KINDS)
+        kind = c2.selectbox("Kind", kinds, index=kinds.index("sop"), format_func=ui.DOC_KINDS.get,
+                            key=f"manual-kind-{n}")
+        rev = c3.text_input("Revision", key=f"manual-rev-{n}")
+        if not ai_on:
+            st.caption(":material/info: Switch the AI writer on in the sidebar to use this.")
+        if st.button("Find the rules with AI", type="primary", icon=":material/auto_awesome:",
+                     disabled=not (up and ai_on and title.strip()), key="manual-go"):
+            folder = config.DATA_DIR / "uploads" / prof.procedure
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / up.name
+            path.write_bytes(up.getvalue())
+            with st.status(f"Reading {up.name}", expanded=True) as status:
+                bar = st.progress(0.0, text="Finding the sections that state a rule…")
+                reading = manuals.read_manual(
+                    ui.llm(), path, prof, title=title.strip(),
+                    progress=lambda i, total, msg: bar.progress(min(1.0, (i + 1) / max(total, 1)),
+                                                                text=f"{msg}  ({i + 1} of {total})"))
+                status.update(label=f"Read {up.name}", state="complete", expanded=False)
+            ss["manual"] = {"path": str(path), "title": title.strip(), "kind": kind,
+                            "revision": rev.strip() or None, "reading": reading}
+            st.rerun()
+        if m := ss.get("manual"):
+            _manual_review(prof, m)
+
+
+def _manual_review(prof, m: dict) -> None:
+    ss = st.session_state
+    reading: manuals.ManualReading = m["reading"]
+    ok, aside = reading.accepted, reading.set_aside
+    st.markdown(f"**{m['title']}** — read {reading.sections_read} of {reading.sections_total} sections: "
+                f"**{len(ok)} rule{'s' if len(ok) != 1 else ''}** passed the checks"
+                + (f", {len(aside)} set aside" if aside else "") + ".")
+    if reading.stopped:
+        st.warning(f"The AI writer stopped answering after {reading.sections_read} sections ({reading.stopped}). "
+                   "The rules found so far are below.", icon=":material/warning:")
+    chosen = []
+    if ok:
+        rows = []
+        for p in ok:
+            rule, applies = _rule_words(prof, p)
+            rows.append({"Use": True, "Rule": rule, "Applies": applies, "The manual says": p.quote,
+                         "Section": p.section})
+        edited = st.data_editor(pd.DataFrame(rows), hide_index=True, width="stretch",
+                                key=f"manual-pick-{ss['manual_n']}",
+                                column_config={"Use": st.column_config.CheckboxColumn(width="small")},
+                                disabled=["Rule", "Applies", "The manual says", "Section"])
+        chosen = [p for p, use in zip(ok, edited["Use"]) if use]
+    else:
+        st.info("No rule passed the checks. The manual can still be added for citations.", icon=":material/info:")
+    if aside:
+        with st.expander(f"Set aside by the checks ({len(aside)})", icon=":material/block:"):
+            st.dataframe(pd.DataFrame([{"Proposed": p.text or p.key or p.signal, "The AI quoted": p.quote,
+                                        "Why it was set aside": "; ".join(p.problems)} for p in aside]),
+                         hide_index=True, width="stretch")
+    b1, b2 = st.columns(2)
+    if b1.button(f"Add the manual with {len(chosen)} rule{'s' if len(chosen) != 1 else ''}", type="primary",
+                 icon=":material/add_task:", width="stretch", key="manual-add"):
+        try:
+            doc = manuals.add_manual(prof.procedure, Path(m["path"]), m["title"], m["kind"], m["revision"], chosen)
+        except references.BuiltinDocument as e:
+            st.error(f"{e}. Give the manual a different title to add it alongside.", icon=":material/lock:")
+            return
+        ss.pop("manual", None)
+        ss["manual_n"] += 1
+        _added(prof, doc)
+        st.rerun()
+    if b2.button("Discard", icon=":material/delete:", width="stretch", key="manual-discard"):
+        ss.pop("manual", None)
+        ss["manual_n"] += 1
+        st.rerun()

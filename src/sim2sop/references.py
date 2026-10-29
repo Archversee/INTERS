@@ -21,7 +21,8 @@ Limits and required actions are declared in YAML front matter of a Markdown docu
 
 For a PDF (or any file without front matter) put the same YAML in a sidecar file next
 to it: `<name>.limits.yaml`. The PDF text is still indexed for citations.
-TODO(ai): extract limits from unstructured PDFs with the LLM, then have an instructor confirm.
+A manual with no limits list can be read by the AI instead (sim2sop.agent.manuals): it proposes the
+rules, checked against the text, and an instructor confirms them into such a limits file.
 
 Adding a document with an `id` that is already in the library supersedes the older
 revision, which stays in the manifest as inactive (history).
