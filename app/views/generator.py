@@ -212,7 +212,8 @@ LAND = Sim(
     make=generate_drive,
     simulator="the CARLA driving simulator",
     choices={
-        "reverse_fast": ("Reverses too fast", "About 7 km/h, above the 5 km/h reversing limit — a limit violation"),
+        "reverse_fast": ("Reverses too fast", "About 7 km/h, above the 5 km/h reversing limit, and runs past "
+                         "11 m into the space behind — limit violations"),
         "forward_adjust": ("Moves forward to centre the car", "A short move forward at the end — a technique only "
                            "some instructors use"),
         "late_indicator": ("Indicator on late", "Signals after stopping instead of while slowing down"),

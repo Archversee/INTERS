@@ -429,16 +429,23 @@ def guideline_body(s: Step, doc: Guidelines) -> None:
         st.markdown(f":red[:material/block: **Hard limit** — {s.limit}]")
 
 
+def _limit_value(lim, prof: Profile) -> str:
+    """"max 85 kt", "max 50°" (% and ° sit on the number, as in the guideline text)."""
+    unit = prof.unit(lim.signal) or ""
+    return f"{lim.describe()}{'' if unit in ('', '%', '°') else ' '}{unit}"
+
+
 def limit_badges(s: Step, prof: Profile) -> str:
     """Short red chips for the hard limits beside a step, e.g. "max 85 kt"."""
-    return " ".join(f":red-badge[:material/block: {lim.describe()} {prof.unit(lim.signal) or ''}]".replace(" ]", "]")
-                    for lim in s.limits)
+    return " ".join(f":red-badge[:material/block: {_limit_value(lim, prof)}]" for lim in s.limits)
 
 
 def limit_name(lim, prof: Profile) -> str:
-    """A limit in a few words, e.g. "Airspeed max 85 kt"."""
-    label = prof.label(lim.signal)
-    return f"{label[:1].upper()}{label[1:]} {lim.describe()} {prof.unit(lim.signal) or ''}".strip()
+    """A limit in a few words, e.g. "Airspeed max 85 kt", "Max 11 m from where you stopped"."""
+    label, value = prof.label(lim.signal), _limit_value(lim, prof)
+    if label.startswith("from "):
+        return f"{value[:1].upper()}{value[1:]} {label}"
+    return f"{label[:1].upper()}{label[1:]} {value}"
 
 
 def when_text(lim, prof: Profile) -> str:

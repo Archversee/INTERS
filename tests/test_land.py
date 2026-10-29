@@ -35,7 +35,9 @@ def test_land_guidelines_cap_reversing_speed(data_dir, tmp_path):
     keys = [s.key for s in doc.steps_in("reverse_in")]
     assert [k for k in keys if k.startswith("toggle:steer_lock")] == STEERING
     assert all(s.seen_in == 5 for s in doc.steps_in("reverse_in") if s.key.startswith("toggle:steer_lock"))
-    assert any(f.kind == "limit_violation" and "5 km/h" in f.message for f in doc.flags)
+    broken = {f.message.split("breaks '")[1].split("'")[0] for f in doc.flags if f.kind == "limit_violation"}
+    assert broken == {"Reverse at walking pace, no faster than 5 km/h",
+                      "Do not reverse more than 11 m from where you stopped (the car behind)"}
     assert {s.key for s in doc.steps if s.required_by} >= {"toggle:indicator_left:1", "toggle:hand_brake:1"}
     stop = [s for s in doc.steps_in("approach") if s.label == "Stop alongside the parked car"]
     assert len(stop) == 1 and stop[0].seen_in == 5   # one step, though the runs differ in length
