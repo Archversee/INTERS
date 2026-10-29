@@ -1,5 +1,5 @@
 from sim2sop import guidelines_store as store
-from sim2sop import references
+from sim2sop import references, storage
 from sim2sop.agent.llm import NoLLM
 from sim2sop.ingest import ingest_run
 from sim2sop.learn.changes import step_slots
@@ -164,3 +164,20 @@ def test_edit_is_learned_and_wrong_numbers_flagged(data_dir, air_raw):
     edited = next(s for s in v4.steps if s.id == rotate.id)
     assert not edited.verified
     assert any("95" in f.message for f in v4.flags)
+
+
+def test_generated_flight_follows_the_chosen_technique(data_dir, tmp_path):
+    from sim2sop.generate.air import generate_flight
+    from sim2sop.ingest import analyse_run
+    p = load_profile(PROFILE)
+    fast = generate_flight(tmp_path, seed=7, overspeed=True, traffic_check=True)
+    calm = generate_flight(tmp_path, seed=7, obstacle=True)
+    assert fast.name == "generated_7" and calm.name == "generated_obstacle_7"
+    rec_fast, _ = analyse_run(fast, p)
+    rec_calm, _ = analyse_run(calm, p)
+    ias = {r.meta.run_id: next(e for e in r.events if e.key == "toggle:flaps_idx:2").state["ias_kt"]
+           for r in (rec_fast, rec_calm)}
+    assert ias["generated_7"] > 85 > ias["generated_obstacle_7"]
+    assert any("Checking for traffic" in f.message for f in rec_fast.flags)
+    assert rec_calm.meta.environment == "new-obstacle" and not storage.list_runs(p.procedure)  # preview only
+

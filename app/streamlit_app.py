@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import streamlit as st
 import ui
-from views import demo, explorer, guidelines, home, progress, references_page, runs
+from views import demo, explorer, generator, guidelines, home, progress, references_page, runs
 
 from sim2sop import config
 from sim2sop.profiles import list_profiles
@@ -23,6 +23,8 @@ ui.PAGES.update({
                           url_path="guidelines"),
     "progress": st.Page(progress.render, title="Progress", icon=":material/trending_up:", url_path="progress"),
     "demo": st.Page(demo.render, title="Guided demo", icon=":material/play_circle:", url_path="demo"),
+    "generator": st.Page(generator.render, title="Flight generator", icon=":material/science:",
+                         url_path="generator"),
     "explorer": st.Page(explorer.render, title="Flight data explorer", icon=":material/monitoring:",
                         url_path="explorer"),
 })
@@ -30,7 +32,7 @@ nav = st.navigation({
     "": [ui.PAGES["home"]],
     "Workflow": [ui.PAGES[k] for k in ("runs", "references", "guidelines")],
     "See the results": [ui.PAGES["demo"], ui.PAGES["progress"]],
-    "Advanced": [ui.PAGES["explorer"]],
+    "Tools": [ui.PAGES["generator"], ui.PAGES["explorer"]],
 })
 
 with st.sidebar:

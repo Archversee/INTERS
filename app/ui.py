@@ -85,6 +85,8 @@ def phase_title(name: str) -> str:
 
 def run_title(run_id: str) -> str:
     n = run_id.rsplit("_", 1)[-1]
+    if run_id.startswith("generated_"):
+        return f"Generated flight #{n}" + (" (new obstacle)" if "obstacle" in run_id else "")
     if "obstacle" in run_id:
         return f"Flight {int(n)} after the new obstacle" if n.isdigit() else run_id
     return f"Flight {int(n)}" if n.isdigit() else run_id

@@ -46,6 +46,10 @@ def render() -> None:
             st.rerun()
         if prof.domain != "air":
             st.caption("Sample flights are only available for the air procedure so far. Upload your own below.")
+        else:
+            st.caption("Want a different flight? Make your own in the **Flight generator**.")
+            ui.link_button("generator", "Open the Flight generator", icon=":material/science:", key="runs-gen",
+                           primary=False)
 
     with st.expander("Upload a recorded flight", icon=":material/upload:"):
         tele = st.file_uploader("Telemetry file from the simulator (CSV)", type=["csv", "parquet", "nmea", "log", "txt"])

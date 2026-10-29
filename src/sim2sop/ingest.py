@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
+
 from sim2sop.adapters import get_adapter
 from sim2sop.profiles import Profile
 from sim2sop.schema import Flag, RunMeta
@@ -19,9 +21,9 @@ from sim2sop.storage import RunRecord, save_run
 from sim2sop.telemetry import add_derived, resample, validate
 
 
-def ingest_run(source_dir: Path, profile: Profile, run_id: str | None = None,
-               environment: str | None = None) -> RunRecord:
-    """`environment` tags the run (e.g. "new-obstacle"); defaults to meta.json's value."""
+def analyse_run(source_dir: Path, profile: Profile, run_id: str | None = None,
+                environment: str | None = None) -> tuple[RunRecord, pd.DataFrame]:
+    """Process a run without storing it (used to preview generated flights)."""
     source_dir = Path(source_dir)
     adapter = get_adapter(profile.adapter)
     df, annotations, meta = adapter.load(source_dir)
@@ -43,5 +45,12 @@ def ingest_run(source_dir: Path, profile: Profile, run_id: str | None = None,
         ),
         phases=phases, events=events, annotations=annotations, flags=flags,
     )
+    return record, df
+
+
+def ingest_run(source_dir: Path, profile: Profile, run_id: str | None = None,
+               environment: str | None = None) -> RunRecord:
+    """`environment` tags the run (e.g. "new-obstacle"); defaults to meta.json's value."""
+    record, df = analyse_run(source_dir, profile, run_id, environment)
     save_run(record, df)
     return record

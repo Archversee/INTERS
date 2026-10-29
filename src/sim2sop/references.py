@@ -79,6 +79,12 @@ def _to_refdoc(meta: dict, stored_name: str, fallback_id: str) -> RefDoc:
                   file=stored_name, limits=limits, requirements=reqs)
 
 
+def read_refdoc(path: Path) -> RefDoc:
+    """Parse a reference document without adding it to the library."""
+    path = Path(path)
+    return _to_refdoc(read_doc_meta(path), path.name, path.stem)
+
+
 def _manifest_path(procedure: str) -> Path:
     return library_dir(procedure) / "manifest.json"
 

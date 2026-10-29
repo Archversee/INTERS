@@ -149,9 +149,16 @@ class _Sim:
         })
 
 
-def simulate_circuit(seed: int, variant: int = 0, obstacle: bool = False) -> tuple[pd.DataFrame, list[dict]]:
-    """Fly one circuit. `variant` adds technique differences between runs; `obstacle`
-    flies the wider pattern used after the new-obstacle NOTAM."""
+def simulate_circuit(seed: int, variant: int = 0, obstacle: bool = False, *,
+                     overspeed: bool | None = None, light_on_roll: bool | None = None,
+                     traffic_check: bool | None = None,
+                     power_correction: bool | None = None) -> tuple[pd.DataFrame, list[dict]]:
+    """Fly one circuit. `variant` picks the technique differences between runs unless they
+    are given explicitly; `obstacle` flies the wider pattern used after the new-obstacle NOTAM."""
+    overspeed = variant == 0 if overspeed is None else overspeed
+    light_on_roll = variant % 2 == 1 if light_on_roll is None else light_on_roll
+    traffic_check = variant == 2 if traffic_check is None else traffic_check
+    power_correction = variant in (1, 3) if power_correction is None else power_correction
     rng = np.random.default_rng(seed)
     p = {
         "vr": rng.normal(55, 1.2),
@@ -166,7 +173,6 @@ def simulate_circuit(seed: int, variant: int = 0, obstacle: bool = False) -> tup
         "final_ias": rng.normal(65, 1.2),
         "final_turn_nm": rng.normal(0.38, 0.02),
     }
-    overspeed = variant == 0
     s = _Sim(rng)
 
     # Taxi
@@ -183,14 +189,14 @@ def simulate_circuit(seed: int, variant: int = 0, obstacle: bool = False) -> tup
 
     # Line up and take off
     s.light_strobe = 1
-    if variant % 2 == 0:
+    if not light_on_roll:
         s.light_landing = 1
         s.say("Lights on, lined up")
     s.hold(rng.uniform(2, 4))
     s.t_throttle, s.t_ias = 100, 80
     s.origin = (s.x, s.y)
     s.say(rng.choice(["Full power, rolling", "Full throttle, rolling"]))
-    if variant % 2 == 1:
+    if light_on_roll:
         s.hold(2)
         s.light_landing = 1
     s.until(lambda: s.ias >= p["vr"])
@@ -213,7 +219,7 @@ def simulate_circuit(seed: int, variant: int = 0, obstacle: bool = False) -> tup
     # Downwind
     s.say("Turning downwind")
     s.turn_to(RWY_HDG + 180)
-    if variant == 2:
+    if traffic_check:
         s.hold(12)
         s.say("Checking for traffic")  # no matching control input: should be flagged
     s.hold(max(5.0, rng.normal(30, 4)))
@@ -246,7 +252,7 @@ def simulate_circuit(seed: int, variant: int = 0, obstacle: bool = False) -> tup
     s.flaps = 3
     s.say(rng.choice(["Flaps 30, on speed", "Full flap, sixty-five knots"]))
     s.t_ias, s.t_vs = p["final_ias"], -450
-    if variant in (1, 3):
+    if power_correction:
         # Technique difference: a power correction on short final.
         s.until(lambda: s.agl <= 250)
         s.t_throttle = s.throttle + 15
@@ -344,3 +350,17 @@ def generate_obstacle_runs(out_dir: Path, n: int = 3, seed: int = 500) -> list[P
             "instructor": f"instructor_{(i % 2) + 1}", "seed": seed + i, "variant": variant,
             "environment": OBSTACLE_ENV}))
     return paths
+
+
+def generate_flight(out_dir: Path, seed: int, obstacle: bool = False, overspeed: bool = False,
+                    light_on_roll: bool = False, traffic_check: bool = False,
+                    power_correction: bool = False, instructor: str | None = None) -> Path:
+    """One flight with the technique choices made explicitly (the app's flight generator)."""
+    choices = {"overspeed": overspeed, "light_on_roll": light_on_roll,
+               "traffic_check": traffic_check, "power_correction": power_correction}
+    df, notes = simulate_circuit(seed, obstacle=obstacle, **choices)
+    run_id = f"generated_{'obstacle_' if obstacle else ''}{seed}"
+    meta = {"instructor": instructor or "generated", "seed": seed, "choices": choices}
+    if obstacle:
+        meta["environment"] = OBSTACLE_ENV
+    return _write_run(out_dir, run_id, df, notes, meta)
