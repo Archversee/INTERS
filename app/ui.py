@@ -111,8 +111,8 @@ def mode_title(doc: Guidelines) -> str:
 
 
 def doc_badges(doc: Guidelines) -> str:
-    parts = [":green-badge[Published]" if doc.status == "published"
-             else ":orange-badge[Draft · needs review]"]
+    parts = [":green-badge[:material/check_circle: Published]" if doc.status == "published"
+             else ":orange-badge[:material/pending: Draft · needs review]"]
     parts.append(":blue-badge[Checked against official limits]" if doc.checked
                  else ":red-badge[Unchecked · no official documents]")
     parts.append(":gray-badge[Advisory]")
@@ -127,12 +127,11 @@ CSS = """
 <style>
 :root { --navy: #14213D; --teal: #14A3A3; --amber: #F4B740; --green: #2E9E6B; --red: #E5484D; }
 [data-testid="stDecoration"] { display: none; }
-[data-testid="stHeader"] { background: transparent; }
-.block-container { padding-top: 2.6rem; padding-bottom: 2rem; max-width: 1180px; }
-h1, h2, h3 { letter-spacing: -0.015em; }
+.block-container { padding-top: 4.2rem; max-width: 1240px; }
+h1, h2, h3 { letter-spacing: -0.02em; }
 .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: .74rem; font-weight: 700;
-           color: var(--teal); margin-bottom: -1rem; }
-.lede { font-size: 1.04rem; opacity: .78; max-width: 52rem; margin: 0 0 .6rem; }
+           color: var(--teal); margin-bottom: -.9rem; }
+.lede { font-size: 1.06rem; opacity: .78; max-width: 52rem; margin: .2rem 0 1rem; }
 
 /* Buttons by role */
 [class*="st-key-tone-"] button[data-testid="stBaseButton-primary"] { border: none; transition: filter .15s; }
@@ -148,28 +147,44 @@ h1, h2, h3 { letter-spacing: -0.015em; }
 [class*="st-key-dec-"] button[role="radio"][aria-checked="true"]:last-of-type {
     background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); border-color: var(--red); }
 
-/* Home: type and hairlines, no boxes */
-.hero { padding: .4rem 0 1.4rem; margin-bottom: 1rem;
-        border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
-.hero .tag { font-size: .74rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--teal); }
-.hero h1 { font-size: 2.9rem; line-height: 1.08; margin: .5rem 0 .6rem; padding: 0; max-width: 50rem; }
-.hero h1 em { font-style: normal; text-decoration: underline; text-decoration-color: var(--amber);
-              text-decoration-thickness: .13em; text-underline-offset: .14em; }
-.hero p { font-size: 1.08rem; opacity: .78; max-width: 44rem; margin: 0; }
-.hero .proof { display: flex; flex-wrap: wrap; gap: 0; margin-top: 1rem; font-size: .88rem; font-weight: 500; }
-.hero .proof span { padding: 0 .9rem; border-left: 2px solid var(--teal); margin-right: .6rem; }
-.steps, .facts { display: grid; gap: 0 1.6rem; margin: .2rem 0 .4rem; }
-.steps { grid-template-columns: repeat(3, 1fr); }
-.facts { grid-template-columns: repeat(2, 1fr); }
-.steps div, .facts div { padding: .7rem 0; border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
-.steps b { display: block; font-family: "IBM Plex Mono", monospace; font-size: .8rem; color: var(--teal);
-           margin-bottom: .2rem; }
-.steps h4, .facts h4 { margin: 0 0 .2rem; padding: 0; font-size: 1rem; }
-.steps p, .facts p { margin: 0; opacity: .74; font-size: .92rem; line-height: 1.5; }
-[class*="st-key-stat-"] [data-testid="stMetric"] { border-left: 2px solid var(--teal); padding-left: .8rem; }
+/* Home */
+.hero { position: relative; overflow: hidden; border-radius: 1.2rem; padding: 2.7rem 2.7rem 2.3rem;
+        margin-bottom: .6rem; color: #fff;
+        background: radial-gradient(700px 320px at 92% -10%, rgba(43,196,196,.45), transparent 65%),
+                    linear-gradient(160deg, #101B33 0%, #14213D 60%, #1B2C52 100%); }
+.hero::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .09;
+               background-image: linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px),
+                                 linear-gradient(90deg, rgba(255,255,255,.6) 1px, transparent 1px);
+               background-size: 44px 44px; mask-image: linear-gradient(90deg, transparent 30%, #000); }
+.hero .tag { display: inline-block; padding: .25rem .75rem; border-radius: 999px; font-size: .78rem;
+             font-weight: 700; color: var(--navy); background: var(--amber); }
+.hero h1 { color: #fff; font-size: 2.65rem; line-height: 1.12; margin: .9rem 0 .7rem; padding: 0; max-width: 46rem; }
+.hero h1 em { font-style: normal; color: var(--amber); }
+.hero p { color: rgba(255,255,255,.82); font-size: 1.1rem; max-width: 44rem; margin: 0; }
+.hero .proof { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.6rem; font-size: .86rem; }
+.hero .proof span { padding: .35rem .8rem; border-radius: 999px; color: rgba(255,255,255,.88);
+                    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14); }
+.hero .proof i { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; margin-right: .45rem;
+                 background: var(--teal); }
+.feature { --accent: var(--teal); height: 100%; padding: 1.15rem 1.25rem; border-radius: .9rem;
+           border-top: 3px solid var(--accent);
+           border-left: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+           border-right: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+           border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+           background: color-mix(in srgb, currentColor 3%, transparent); }
+.feature .num { display: inline-flex; width: 2rem; height: 2rem; border-radius: .6rem; align-items: center;
+                justify-content: center; font-weight: 800; font-size: .95rem; color: #fff;
+                background: var(--accent); margin-bottom: .6rem; }
+.feature h4 { margin: 0 0 .35rem; padding: 0; font-size: 1.02rem; }
+.feature p { margin: 0; opacity: .75; font-size: .93rem; line-height: 1.5; }
+.feature.plain { border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent); }
+[class*="st-key-stat-"] [data-testid="stMetric"] { box-shadow: inset 0 3px 0 var(--teal); }
+.domains { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .3rem; }
+.domains span { padding: .3rem .85rem; border-radius: 999px; font-size: .85rem; font-weight: 600;
+                border: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
 .sidebar-foot { font-size: .78rem; opacity: .6; line-height: 1.5; }
 @media (max-width: 640px) {
-  .hero h1 { font-size: 2rem; } .steps, .facts { grid-template-columns: 1fr; }
+  .hero { padding: 1.6rem 1.3rem; } .hero h1 { font-size: 1.8rem; }
 }
 </style>
 """
@@ -191,7 +206,7 @@ def page_header(title: str, lede: str | None = None, eyebrow: str | None = None)
         st.markdown(f'<p class="lede">{lede}</p>', unsafe_allow_html=True)
 
 
-def link_button(page_key: str, label: str, icon: str | None = None, primary: bool = True,
+def link_button(page_key: str, label: str, icon: str = ":material/arrow_forward:", primary: bool = True,
                 key: str | None = None) -> None:
     """Button that opens another page of the app."""
     if st.button(label, icon=icon, type="primary" if primary else "secondary", key=key or f"go-{page_key}-{label}"):
@@ -227,7 +242,7 @@ def start_over(prof: Profile) -> None:
     st.caption(f"Deletes every {noun()}, guideline version, uploaded document, instructor correction and "
                f"generated {noun()} for this procedure. The built-in official rules stay.")
     sure = st.checkbox("Yes, delete all the data", key="reset-sure")
-    if st.button("Delete all data", type="primary", disabled=not sure,
+    if st.button("Delete all data", type="primary", icon=":material/delete_forever:", disabled=not sure,
                  key="tone-danger-reset", width="stretch"):
         reset_all(prof)
         st.session_state["toast"] = "All data deleted. The built-in official rules stay in force."
@@ -318,7 +333,7 @@ def pending_banner(prof: Profile, key: str) -> None:
             st.markdown(f"**{len(doc.pending)} change"
                         f"{'s' if len(doc.pending) != 1 else ''} in version {doc.version} "
                         "waiting for your approval.**")
-            if st.button("Review now", type="primary", key=f"tone-attn-{key}"):
+            if st.button("Review now", type="primary", icon=":material/fact_check:", key=f"tone-attn-{key}"):
                 st.session_state["review_queue"] = {"version": doc.version, "title": f"Version {doc.version}"}
                 st.rerun()
 
@@ -361,7 +376,7 @@ def review_dialog(version: int, title: str) -> None:
     head, btn = st.columns([3, 2], vertical_alignment="center")
     head.markdown(f"### {title}")
     if btn.button("Approve all and publish" if not rejects else f"Publish ({len(rejects)} rejected)",
-                  type="primary", key="tone-go-publish", width="stretch"):
+                  type="primary", icon=":material/done_all:", key="tone-go-publish", width="stretch"):
         _publish(prof, doc, rejects)
     _review_summary(doc, prev)
     _capped(doc, prev, prof)
@@ -400,7 +415,7 @@ def review_dialog(version: int, title: str) -> None:
                     guideline_body(s, doc)
         if routine:
             with st.expander(f"{len(routine)} guideline{'s' if len(routine) != 1 else ''} had their typical "
-                             "ranges refined by the new data", expanded=not important):
+                             "ranges refined by the new data", icon=":material/tune:", expanded=not important):
                 for s in routine:
                     head, choice = st.columns([4, 2])
                     head.markdown(f"**{phase_title(s.phase)} · {s.action}**  \n"
@@ -490,11 +505,12 @@ def _change_badge(s: Step, old: Step | None = None) -> str | None:
     """With the previous version's step, a changed step says what changed ("Changed: Typical"),
     so a line that reads the same in the checklist shows where the difference is."""
     if s.change == "moved":
-        return f":blue-badge[Moved from {phase_title(s.moved_from or '')}]"
+        return f":blue-badge[:material/swap_vert: Moved from {phase_title(s.moved_from or '')}]"
     if s.change == "modified" and old is not None:
         parts = changed_parts(s, old)
-        return f":blue-badge[Changed: {', '.join(parts)}]" if parts else None
-    return {"added": ":blue-badge[New]", "modified": ":blue-badge[Changed]"}.get(s.change or "")
+        return f":blue-badge[:material/edit: Changed: {', '.join(parts)}]" if parts else None
+    return {"added": ":blue-badge[:material/add_circle: New]",
+            "modified": ":blue-badge[:material/edit: Changed]"}.get(s.change or "")
 
 
 def step_badges(s: Step, show_change: bool = True, old: Step | None = None) -> str:
@@ -502,7 +518,7 @@ def step_badges(s: Step, show_change: bool = True, old: Step | None = None) -> s
     the previous version."""
     out = []
     if s.required_by:
-        out.append(":green-badge[Required by SOP]")
+        out.append(":green-badge[:material/verified: Required by SOP]")
     elif s.run_count < 2:
         out.append(f":gray-badge[Seen in 1 {noun()}]")
     elif s.mandatory:
@@ -512,11 +528,11 @@ def step_badges(s: Step, show_change: bool = True, old: Step | None = None) -> s
     if show_change and (badge := _change_badge(s, old)):
         out.append(badge)
     if s.review == "pending":
-        out.append(":orange-badge[Awaiting approval]")
+        out.append(":orange-badge[:material/schedule: Awaiting approval]")
     if s.edited:
-        out.append(":gray-badge[Edited by instructor]")
+        out.append(":gray-badge[:material/person_edit: Edited by instructor]")
     if not s.verified:
-        out.append(":red-badge[Number not verified]")
+        out.append(":red-badge[:material/error: Number not verified]")
     return " ".join(out)
 
 
@@ -572,7 +588,7 @@ def checklist_line(n: int, s: Step, prof: Profile, show_change: bool = True, old
         when = when[:1].lower() + when[1:]
     tags = []
     if s.required_by:
-        tags.append(":green-badge[Required]")
+        tags.append(":green-badge[:material/verified: Required]")
     elif not s.mandatory:
         tags.append(f":orange-badge[Technique · {s.seen_in}/{s.run_count}]")
     if show_change and (badge := _change_badge(s, old)):

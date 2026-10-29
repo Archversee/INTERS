@@ -8,13 +8,12 @@ gatherUsageStats = false
 # Palette: navy and turquoise with amber highlights, on warm paper. Green / red only for meaning.
 # Shared by both themes. The app follows the computer's light / dark setting by default.
 [theme]
-font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap, sans-serif"
-headingFont = "Space Grotesk:https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap, sans-serif"
-codeFont = "IBM Plex Mono:https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap, monospace"
-headingFontWeights = [700, 600, 600, 600, 600, 600]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
+headingFont = "Plus Jakarta Sans:https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&display=swap, sans-serif"
+headingFontWeights = [800, 700, 700, 600, 600, 600]
 headingFontSizes = ["2.4rem", "1.7rem", "1.3rem", "1.1rem"]
-baseRadius = "0.35rem"
-buttonRadius = "0.35rem"
+baseRadius = "0.6rem"
+buttonRadius = "0.5rem"
 showWidgetBorder = true
 showSidebarBorder = true
 linkUnderline = false

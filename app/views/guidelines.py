@@ -47,7 +47,7 @@ def details(step_id: str, version: int) -> None:
     field = st.segmented_control("Part", list(EDITABLE), default="action", format_func=EDITABLE.get,
                                  key=f"edit-field-{s.id}") or "action"
     text = st.text_area("Text", value=getattr(s, field) or "", key=f"edit-{version}-{s.id}-{field}")
-    if st.button("Save edit", type="primary", key="tone-go-save"):
+    if st.button("Save edit", type="primary", icon=":material/save:", key="tone-go-save"):
         new = apply_edit(prof, s.id, field, text, version=version)
         edited = next(x for x in new.steps if x.id == s.id)
         st.session_state["flash"] = (f"Saved as version {new.version}." if edited.verified else
@@ -74,7 +74,7 @@ def _build_bar(prof, doc) -> None:
         with st.container(border=True):
             st.markdown(f"There is data the guidelines do not include yet "
                         f"({len(new_runs)} {ui.noun(len(new_runs))}, {len(new_docs)} document(s)).")
-            if st.button("Update the guidelines", type="primary",
+            if st.button("Update the guidelines", type="primary", icon=":material/auto_awesome:",
                          key="update-guidelines"):
                 ui.refresh_guidelines(prof, "Guidelines updated")
                 st.rerun()
@@ -86,7 +86,7 @@ def render() -> None:
                    "where they differ from an official document, the official document wins.",
                    eyebrow="Step 2 · Read and publish")
     if msg := st.session_state.pop("flash", None):
-        st.success(msg)
+        st.success(msg, icon=":material/check_circle:")
 
     versions = store.versions(prof.procedure)
     latest = store.load(prof.procedure, versions[-1]) if versions else None
@@ -123,7 +123,7 @@ def render() -> None:
                     lines.append(ui.checklist_line(n, s, prof, show_change, before.get(s.id)))
                 st.markdown("\n".join(lines))
     else:
-        with st.expander("How to read a guideline"):
+        with st.expander("How to read a guideline", icon=":material/help:"):
             st.markdown(
                 "- **When** — the moment to act. **Why** — the instructor's own callout.\n"
                 f"- **Typical** — the range instructors used across the recorded {ui.noun(2)}.\n"
@@ -142,13 +142,14 @@ def render() -> None:
                     head, btn = st.columns([5, 1])
                     head.markdown(f"**{n}. {s.action}**")
                     head.markdown(ui.step_badges(s, show_change, before.get(s.id)))
-                    if btn.button("Details", key=f"d-{v}-{s.id}", width="stretch"):
+                    if btn.button("Details", key=f"d-{v}-{s.id}", icon=":material/open_in_full:", width="stretch"):
                         details(s.id, v)
                     ui.guideline_body(s, doc)
 
     _flags(doc)
     st.download_button("Download printable version (HTML)", render_html.to_html(doc),
-                       file_name=f"{doc.procedure}_guidelines_v{doc.version}.html", mime="text/html")
+                       file_name=f"{doc.procedure}_guidelines_v{doc.version}.html", mime="text/html",
+                       icon=":material/download:")
 
 
 def _flags(doc) -> None:
@@ -160,6 +161,6 @@ def _flags(doc) -> None:
     st.subheader("Things to check")
     for kind, (label, icon) in ui.FLAG_LABELS.items():
         if kind in groups:
-            with st.expander(f"{label} ({len(groups[kind])})"):
+            with st.expander(f"{label} ({len(groups[kind])})", icon=icon):
                 for m in groups[kind]:
                     st.markdown(f"- {m}")

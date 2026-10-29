@@ -5,5 +5,5 @@
   <path d="M14 42 C24 40 30 30 36 22 L44 14" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 7"/>
   <path d="M40 12 L52 12 L52 24" fill="none" stroke="#FFD166" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M18 50 H46" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
-  <text x="80" y="43" font-family="Space Grotesk, Segoe UI, sans-serif" font-size="30" font-weight="800" fill="#2BB3B3">Sim-to-<tspan fill="#F4B740">SOP</tspan></text>
+  <text x="80" y="43" font-family="Plus Jakarta Sans, Inter, Segoe UI, sans-serif" font-size="30" font-weight="800" fill="#2BB3B3">Sim-to-<tspan fill="#F4B740">SOP</tspan></text>
 </svg>
