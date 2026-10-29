@@ -48,10 +48,11 @@ def _rules(prof, active) -> None:
 
 def render() -> None:
     prof = ui.profile()
-    st.title(":material/menu_book: Official documents")
-    st.write("The official manuals and standard operating procedures are the authority. They set the "
-             "**hard limits** the guidelines must stay inside. They are only read, never changed.")
-    st.caption(":material/lock: The built-in documents are always in force and cannot be removed or replaced. "
+    ui.page_header("Official documents",
+                   "The official manuals and standard operating procedures are the authority. They set the "
+                   "**hard limits** the guidelines must stay inside. They are only read, never changed.",
+                   eyebrow="The rules")
+    st.caption("The built-in documents are always in force and cannot be removed or replaced. "
                "You can upload more of your own; adding one re-checks the guidelines straight away.")
     ui.pending_banner(prof, key="refs-review")
 
@@ -67,8 +68,8 @@ def render() -> None:
             st.markdown(f"**{d.title}**" + (f" · rev {d.revision}" if d.revision else ""))
             st.caption(f"{ui.DOC_KINDS.get(d.kind, 'Document')} · {n_lim} hard limit{'s' if n_lim != 1 else ''}"
                        + (f" · {n_req} required action{'s' if n_req != 1 else ''}" if n_req else ""))
-            st.markdown(":blue-badge[:material/lock: Built in · always in force]" if d.builtin
-                        else ":gray-badge[:material/upload: Uploaded]")
+            st.markdown(":blue-badge[Built in · always in force]" if d.builtin
+                        else ":gray-badge[Uploaded]")
 
     _ai_manual(prof)
 
@@ -115,7 +116,7 @@ def _ai_manual(prof) -> None:
     ss = st.session_state
     ai_on = ss.get("llm_provider", config.LLM_PROVIDER) != "none"
     with st.container(border=True):
-        st.markdown("**:material/smart_toy: Read a manual with AI**")
+        st.markdown("**Read a manual with AI**")
         st.caption("Upload a manual without a limits list (PDF, Markdown or text). The AI reads each section that "
                    "states a rule and proposes hard limits and required actions in this procedure's terms. A "
                    "proposal must quote the manual word for word and use a value written in that quote, or it is "
@@ -130,7 +131,7 @@ def _ai_manual(prof) -> None:
                             key=f"manual-kind-{n}")
         rev = c3.text_input("Revision", key=f"manual-rev-{n}")
         if not ai_on:
-            st.caption(":material/info: Switch the AI writer on in the sidebar to use this.")
+            st.caption("Switch the AI writer on in the sidebar to use this.")
         if st.button("Find the rules with AI", type="primary", icon=":material/auto_awesome:",
                      disabled=not (up and ai_on and title.strip()), key="manual-go"):
             folder = config.DATA_DIR / "uploads" / prof.procedure
@@ -184,7 +185,7 @@ def _manual_review(prof, m: dict) -> None:
                                 disabled=[c for c in rows[0] if c != "Use"])
         chosen = [p for p, use in zip(ok, edited["Use"]) if use]
         if suspect:
-            st.caption(f":material/warning: Every recorded {ui.noun()} would break {suspect} of these, so they "
+            st.caption(f"Every recorded {ui.noun()} would break {suspect} of these, so they "
                        "are unticked: the AI most likely picked the wrong signal (steering angle for angle to the "
                        "kerb) or turned a maximum into a minimum. Tick one only if the rule really is that strict.")
     else:

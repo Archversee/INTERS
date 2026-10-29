@@ -1,2 +1,44 @@
 [client]
-toolbarMode = "minimal"
+# Viewers keep the theme switch (menu at the top right -> Settings) but not the developer buttons.
+toolbarMode = "viewer"
+
+[browser]
+gatherUsageStats = false
+
+# Shared by both themes. The app follows the computer's light / dark setting by default.
+[theme]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
+headingFont = "Plus Jakarta Sans:https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&display=swap, sans-serif"
+headingFontWeights = [800, 700, 700, 600, 600, 600]
+headingFontSizes = ["2.4rem", "1.7rem", "1.3rem", "1.1rem"]
+baseRadius = "0.6rem"
+buttonRadius = "0.5rem"
+showWidgetBorder = true
+showSidebarBorder = true
+linkUnderline = false
+
+[theme.light]
+primaryColor = "#2155D6"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F6FB"
+textColor = "#0E1A2E"
+borderColor = "#DCE3EE"
+linkColor = "#2155D6"
+chartCategoricalColors = ["#2155D6", "#0EA5B7", "#F08A24", "#8B5CF6", "#16A34A", "#E5484D"]
+
+[theme.light.sidebar]
+backgroundColor = "#F6F8FC"
+secondaryBackgroundColor = "#FFFFFF"
+
+[theme.dark]
+primaryColor = "#5B8CFF"
+backgroundColor = "#0B1220"
+secondaryBackgroundColor = "#141E33"
+textColor = "#E6ECF5"
+borderColor = "#24304A"
+linkColor = "#7FA6FF"
+chartCategoricalColors = ["#5B8CFF", "#22C3D6", "#FFA94D", "#A78BFA", "#4ADE80", "#FF6B6E"]
+
+[theme.dark.sidebar]
+backgroundColor = "#0E1729"
+secondaryBackgroundColor = "#141E33"

@@ -16,8 +16,8 @@ FOLLOW = {"air": "toggle:flaps_idx:2", "land": "toggle:steer_lock:-1"}
 
 def render() -> None:
     prof = ui.profile()
-    st.title(":material/trending_up: Progress")
-    st.write(f"How the guidelines improve as instructors add {ui.noun(2)}, official documents and corrections.")
+    ui.page_header("Progress", f"How the guidelines improve as instructors add {ui.noun(2)}, official documents "
+                   "and corrections.", eyebrow="Results")
     versions = store.versions(prof.procedure)
     if versions:
         docs = [store.load(prof.procedure, v) for v in versions]
@@ -73,17 +73,18 @@ def _history(prof, docs) -> None:
 
     st.subheader(f"Version {last.version} compared with version {prev.version}" if prev else f"Version {last.version}")
     c = st.columns(4)
-    c[0].metric(f"Numbers verified against {ui.noun()} data", f"{m['verifier_pass_rate']:.0%}",
+    c[0].metric("Numbers verified", f"{m['verifier_pass_rate']:.0%}",
                 delta("verifier_pass_rate"), border=True, chart_data=series("verifier_pass_rate", 100),
-                help=f"Every number in the guidelines is checked against the recorded {ui.noun(2)}.")
+                help=f"Every number in the guidelines is checked against the recorded {ui.noun(2)}.", height="stretch")
     within = m.get("within_limits", -1)
     c[1].metric("Inside official limits", "Unchecked" if within < 0 else f"{within:.0%}", border=True,
+                height="stretch",
                 help="Share of limited values inside the hard limits from the official documents.")
     c[2].metric("Typical-range width", f"{m['range_width_ratio']:.2f}", delta("range_width_ratio", False),
-                delta_color="inverse", border=True, chart_data=series("range_width_ratio"),
+                delta_color="inverse", border=True, chart_data=series("range_width_ratio"), height="stretch",
                 help=f"1.00 = the default range for a single {ui.noun()}. Lower = instructors agree more closely.")
     c[3].metric("Confidence", f"{m['mean_confidence']:.0%}", delta("mean_confidence"), border=True,
-                chart_data=series("mean_confidence", 100),
+                chart_data=series("mean_confidence", 100), height="stretch",
                 help="Average over all steps: how consistently instructors do each step.")
 
     st.subheader("Version history")

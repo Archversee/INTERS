@@ -81,9 +81,10 @@ def _upload(prof) -> None:
 
 def render() -> None:
     prof = ui.profile()
-    st.title(f":material/flight: Instructor {ui.noun(2)}")
-    st.write(f"Each {ui.noun()} is one instructor doing the procedure in the simulator, with their spoken "
-             f"callouts. The more {ui.noun(2)} you add, the better the guidelines describe the typical technique.")
+    ui.page_header(f"Instructor {ui.noun(2)}",
+                   f"Each {ui.noun()} is one instructor doing the procedure in the simulator, with their spoken "
+                   f"callouts. The more {ui.noun(2)} you add, the better the guidelines describe the typical "
+                   "technique.", eyebrow="Step 1 · Record")
     ui.pending_banner(prof, key="runs-review")
     _upload(prof)
 

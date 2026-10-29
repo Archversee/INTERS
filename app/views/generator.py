@@ -51,22 +51,22 @@ def _air_highlights(record, df: pd.DataFrame, meta: dict) -> list[str]:
     phase = {p.name: df[(df["t"] >= p.t_start) & (df["t"] < p.t_end)] for p in record.phases}
     out = []
     if e := first.get("toggle:on_ground:0"):
-        out.append(f":material/flight_takeoff: Lifts off at **{e.state.get('ias_kt', 0):.0f} kt**")
+        out.append(f"Lifts off at **{e.state.get('ias_kt', 0):.0f} kt**")
     if (dw := phase.get("downwind")) is not None and len(dw):
-        out.append(f":material/height: Downwind at **{dw['agl_ft'].median():,.0f} ft**, "
+        out.append(f"Downwind at **{dw['agl_ft'].median():,.0f} ft**, "
                    f"**{dw['track_offset_nm'].median():.1f} nm** from the runway, "
                    f"**{dw['ias_kt'].median():.0f} kt**")
     flaps = [f"{deg}° at {first[k].state.get('ias_kt', 0):.0f} kt" for deg, k in
              ((10, "toggle:flaps_idx:1"), (20, "toggle:flaps_idx:2"), (30, "toggle:flaps_idx:3")) if k in first]
     if flaps:
-        out.append(":material/tune: Flaps " + ", ".join(flaps))
+        out.append("Flaps " + ", ".join(flaps))
     if "wind_kt" in df:
-        out.append(f":material/air: Wind {df['wind_kt'].median():.0f} kt from {df['wind_dir_deg'].median():03.0f}°")
+        out.append(f"Wind {df['wind_kt'].median():.0f} kt from {df['wind_dir_deg'].median():03.0f}°")
     choices = meta.get("choices", {})
     if choices.get("power_correction"):
-        out.append(":material/bolt: Power correction on short final")
+        out.append("Power correction on short final")
     if choices.get("light_on_roll"):
-        out.append(":material/light_mode: Landing light switched on during the take-off roll")
+        out.append("Landing light switched on during the take-off roll")
     return out
 
 
@@ -158,21 +158,21 @@ def _land_highlights(record, df: pd.DataFrame, meta: dict) -> list[str]:
     phase = {p.name: df[(df["t"] >= p.t_start) & (df["t"] < p.t_end)] for p in record.phases}
     out = []
     if (ap := phase.get("approach")) is not None and len(ap):
-        out.append(f":material/directions_car: Drives up at **{ap['speed_kmh'].quantile(0.9):.0f} km/h** and stops "
+        out.append(f"Drives up at **{ap['speed_kmh'].quantile(0.9):.0f} km/h** and stops "
                    "alongside the parked car")
     if len(rv := df[df["reverse"] == 1]):
-        out.append(f":material/speed: Reverses at up to **{rv['speed_kmh'].max():.1f} km/h**")
+        out.append(f"Reverses at up to **{rv['speed_kmh'].max():.1f} km/h**")
     if e := first.get("toggle:steer_lock:-1"):
-        out.append(f":material/turn_left: Full left lock after reversing **{e.state.get('back_m', 0):.1f} m**")
+        out.append(f"Full left lock after reversing **{e.state.get('back_m', 0):.1f} m**")
     if e := first.get("toggle:steer_lock:1"):
-        out.append(f":material/turn_right: Full right lock at **{e.state.get('kerb_angle_deg', 0):.0f}°** to the kerb")
-    out.append(f":material/local_parking: Ends **{abs(df['kerb_angle_deg'].iloc[-1]):.0f}°** off parallel to the "
+        out.append(f"Full right lock at **{e.state.get('kerb_angle_deg', 0):.0f}°** to the kerb")
+    out.append(f"Ends **{abs(df['kerb_angle_deg'].iloc[-1]):.0f}°** off parallel to the "
                "kerb")
     choices = meta.get("choices", {})
     if choices.get("forward_adjust"):
-        out.append(":material/arrow_upward: Moves forward at the end to centre the car")
+        out.append("Moves forward at the end to centre the car")
     if choices.get("late_indicator"):
-        out.append(":material/flare: Left indicator switched on only after stopping")
+        out.append("Left indicator switched on only after stopping")
     return out
 
 
@@ -415,7 +415,7 @@ def _rundown(prof: Profile, sim: Sim, run_dir: Path) -> None:
 
 def _format_guide(prof: Profile, sim: Sim) -> None:
     run = ui.noun()
-    st.subheader(f":material/integration_instructions: Data format — bring your own {ui.noun(2)}")
+    st.subheader(f"Data format — bring your own {ui.noun(2)}")
     st.write(f"A generated {run} is laid out exactly like a recording from {sim.simulator}. "
              f"To add a real {run}, give it the same shape.")
     t1, t2, t3, t4, t5 = st.tabs(["Folder", "telemetry.csv", "annotations.json", "meta.json", "How to add it"])
@@ -453,10 +453,10 @@ def _format_guide(prof: Profile, sim: Sim) -> None:
 
 def render() -> None:
     prof = ui.profile()
-    st.title(f":material/science: {ui.noun(cap=True)} generator")
-    st.write(f"Make a random instructor {ui.noun()} in the simulator's own data format, see what's in it, then add "
-             "it to the guidelines with one click — or download it as an example of what a recording should look "
-             "like.")
+    ui.page_header(f"{ui.noun(cap=True)} generator",
+                   f"Make a random instructor {ui.noun()} in the simulator's own data format, see what's in it, "
+                   "then add it to the guidelines with one click, or download it as an example of what a "
+                   "recording should look like.", eyebrow="Tools")
     sim = SIMS.get(prof.domain)
     if sim is None:
         st.info("The generator makes Cessna 172 circuits and parallel parking so far. Pick one of those "

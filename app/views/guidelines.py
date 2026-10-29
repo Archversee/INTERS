@@ -30,11 +30,11 @@ def details(step_id: str, version: int) -> None:
               f"the typical range is. Rises as more {ui.noun(2)} are added.")
     c2.metric("Based on", f"{len(s.runs)} {ui.noun(len(s.runs))}")
     if s.reference:
-        st.caption(f":material/menu_book: Source: {s.reference.doc} — {s.reference.section}")
+        st.caption(f"Source: {s.reference.doc} — {s.reference.section}")
     if s.required_by:
-        st.caption(f":material/verified: Required by {s.required_by}")
+        st.caption(f"Required by {s.required_by}")
     for n in s.technique_notes:
-        st.caption(f":material/info: {n}")
+        st.caption(f"{n}")
     for f in s.flags:
         st.caption(f":red[:material/warning: {f}]")
     if s.change_reasons:
@@ -64,7 +64,7 @@ def _build_bar(prof, doc) -> None:
     runs = storage.list_runs(prof.procedure)
     if doc is None:
         with st.container(border=True):
-            st.markdown(f":material/info: The guidelines are created automatically when you add the first "
+            st.markdown(f"The guidelines are created automatically when you add the first "
                         f"{ui.noun()}.")
             ui.link_button("runs", f"Add {ui.noun(2)}", key="g-runs")
         return
@@ -72,7 +72,7 @@ def _build_bar(prof, doc) -> None:
     new_docs = [d for d in references.list_references(prof.procedure) if d.label not in doc.references]
     if new_runs or new_docs:
         with st.container(border=True):
-            st.markdown(f":material/update: There is data the guidelines do not include yet "
+            st.markdown(f"There is data the guidelines do not include yet "
                         f"({len(new_runs)} {ui.noun(len(new_runs))}, {len(new_docs)} document(s)).")
             if st.button("Update the guidelines", type="primary", icon=":material/auto_awesome:"):
                 ui.refresh_guidelines(prof, "Guidelines updated")
@@ -81,7 +81,9 @@ def _build_bar(prof, doc) -> None:
 
 def render() -> None:
     prof = ui.profile()
-    st.title(":material/checklist: Guidelines")
+    ui.page_header("Guidelines", f"Step-by-step guidance learned from instructor {ui.noun(2)}. They are advisory: "
+                   "where they differ from an official document, the official document wins.",
+                   eyebrow="Step 2 · Read and publish")
     if msg := st.session_state.pop("flash", None):
         st.success(msg, icon=":material/check_circle:")
 
@@ -100,8 +102,6 @@ def render() -> None:
                     f"{len(doc.runs)} {ui.noun(len(doc.runs))}")
         st.markdown(ui.doc_badges(doc))
     ui.pending_banner(prof, key="g-review")
-    st.caption("Advisory guidelines: how instructors typically fly it. Where they differ from an official "
-               "document, the official document wins.")
 
     view = st.segmented_control("View", ["Checklist", "Full detail"], default="Checklist", key="g-view",
                                 label_visibility="collapsed") or "Checklist"

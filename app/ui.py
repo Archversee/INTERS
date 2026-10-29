@@ -20,10 +20,11 @@ from sim2sop.schema import Guidelines, Step
 
 PAGES: dict = {}   # filled by streamlit_app.py so pages can link to each other
 
+ASSETS = Path(__file__).parent / "assets"
 PROFILE_NAMES = {
-    "air_c172_circuit": "✈️ Air · Cessna 172 circuit",
-    "land_parallel_park": "🚗 Land · Parallel parking",
-    "sea_harbour_exit": "🚢 Sea · Harbour exit",
+    "air_c172_circuit": "Air · Cessna 172 circuit",
+    "land_parallel_park": "Land · Parallel parking",
+    "sea_harbour_exit": "Sea · Harbour exit",
 }
 # What one recorded run is called in each domain, and the domains the generator can make.
 NOUNS = {"air": "flight", "land": "drive", "sea": "run"}
@@ -110,12 +111,66 @@ def mode_title(doc: Guidelines) -> str:
 
 
 def doc_badges(doc: Guidelines) -> str:
-    parts = [":green-badge[:material/check_circle: Published]" if doc.status == "published"
-             else ":orange-badge[:material/edit_note: Draft — needs review]"]
-    parts.append(":blue-badge[:material/verified_user: Checked against official limits]" if doc.checked
-                 else ":red-badge[:material/gpp_maybe: Unchecked — no official documents]")
+    parts = [":green-badge[Published]" if doc.status == "published"
+             else ":orange-badge[Draft · needs review]"]
+    parts.append(":blue-badge[Checked against official limits]" if doc.checked
+                 else ":red-badge[Unchecked · no official documents]")
     parts.append(":gray-badge[Advisory]")
     return " ".join(parts)
+
+
+# Tints are mixed from the text colour, so the same CSS works in the light and the dark theme.
+CSS = """
+<style>
+[data-testid="stDecoration"] { display: none; }
+.block-container { padding-top: 4.2rem; max-width: 1240px; }
+h1, h2, h3 { letter-spacing: -0.02em; }
+.eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: .74rem; font-weight: 600;
+           opacity: .62; margin-bottom: -.9rem; }
+.lede { font-size: 1.06rem; opacity: .78; max-width: 52rem; margin: .2rem 0 1rem; }
+.hero { border-radius: 1.1rem; padding: 2.6rem 2.6rem 2.2rem; margin-bottom: .6rem; color: #fff;
+        background: radial-gradient(1200px 400px at 85% -20%, rgba(14,165,183,.55), transparent 60%),
+                    linear-gradient(135deg, #0E1F4D 0%, #1B3FA8 55%, #2155D6 100%); }
+.hero .tag { display: inline-block; padding: .22rem .7rem; border-radius: 999px; font-size: .78rem;
+             font-weight: 600; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.22); }
+.hero h1 { color: #fff; font-size: 2.6rem; line-height: 1.12; margin: .9rem 0 .7rem; padding: 0; max-width: 46rem; }
+.hero p { color: rgba(255,255,255,.84); font-size: 1.1rem; max-width: 44rem; margin: 0; }
+.hero .proof { display: flex; flex-wrap: wrap; gap: 1.6rem; margin-top: 1.6rem; font-size: .9rem;
+               color: rgba(255,255,255,.8); }
+.hero .proof b { color: #fff; }
+.feature { height: 100%; padding: 1.1rem 1.2rem; border-radius: .8rem;
+           border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+           background: color-mix(in srgb, currentColor 3%, transparent); }
+.feature .num { display: inline-flex; width: 1.9rem; height: 1.9rem; border-radius: .55rem; align-items: center;
+                justify-content: center; font-weight: 700; font-size: .9rem; color: #fff;
+                background: linear-gradient(135deg, #2155D6, #0EA5B7); margin-bottom: .6rem; }
+.feature h4 { margin: 0 0 .35rem; padding: 0; font-size: 1.02rem; }
+.feature p { margin: 0; opacity: .75; font-size: .93rem; line-height: 1.5; }
+.domains { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .3rem; }
+.domains span { padding: .3rem .8rem; border-radius: 999px; font-size: .85rem;
+                border: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
+.sidebar-foot { font-size: .78rem; opacity: .6; line-height: 1.5; }
+@media (max-width: 640px) {
+  .hero { padding: 1.6rem 1.3rem; } .hero h1 { font-size: 1.8rem; }
+}
+</style>
+"""
+
+
+def style() -> None:
+    """Brand, fonts and spacing shared by every page (call once per run)."""
+    st.logo(str(ASSETS / "logo.svg"), size="large", icon_image=str(ASSETS / "mark.svg"))
+    st.html(CSS)
+
+
+def page_header(title: str, lede: str | None = None, eyebrow: str | None = None) -> None:
+    """The same header on every page: a small step label, the title and one line of what it is for."""
+    if eyebrow:
+        st.markdown(f'<div class="eyebrow">{eyebrow}</div>', unsafe_allow_html=True)
+    st.title(title)
+    if lede:
+        lede = re.sub(r"\*(.+?)\*", r"<i>\1</i>", re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", lede))
+        st.markdown(f'<p class="lede">{lede}</p>', unsafe_allow_html=True)
 
 
 def link_button(page_key: str, label: str, icon: str = ":material/arrow_forward:", primary: bool = True,
@@ -197,7 +252,7 @@ def run_build(label: str, fn):
     with st.status(label, expanded=True) as status:
         provider = st.session_state.get("llm_provider", config.LLM_PROVIDER)
         if provider != "none":
-            st.caption(f":material/smart_toy: The AI writer ({st.session_state.get('llm_model') or provider}) is "
+            st.caption(f"The AI writer ({st.session_state.get('llm_model') or provider}) is "
                        "wording each guideline, which can take a while per step. If it stops answering, the "
                        "built-in wording is used for the rest. For instant results, switch the AI writer to "
                        "*No AI* in the sidebar.")
@@ -242,7 +297,7 @@ def pending_banner(prof: Profile, key: str) -> None:
     doc = store.latest(prof.procedure)
     if doc and doc.pending and not st.session_state.get("review_queue"):
         with st.container(border=True):
-            st.markdown(f":orange[:material/fact_check:] **{len(doc.pending)} change"
+            st.markdown(f"**{len(doc.pending)} change"
                         f"{'s' if len(doc.pending) != 1 else ''} in version {doc.version} "
                         "waiting for your approval.**")
             if st.button("Review now", type="primary", icon=":material/fact_check:", key=key):
@@ -391,7 +446,7 @@ def _cited(doc: Guidelines, prev: Guidelines | None) -> None:
              if s.review != "pending" and s.reference and s.reference.doc != old.get(k)]
     if cited:
         n = len(cited)
-        st.caption(f":material/menu_book: {n} other guideline{'s now cite' if n != 1 else ' now cites'} "
+        st.caption(f"{n} other guideline{'s now cite' if n != 1 else ' now cites'} "
                    f"{', '.join(sorted(set(cited)))}. The wording is unchanged, so there is nothing to review.")
 
 
@@ -448,14 +503,12 @@ def step_badges(s: Step, show_change: bool = True, old: Step | None = None) -> s
 
 
 def guideline_body(s: Step, doc: Guidelines) -> None:
-    rows = [(":material/schedule:", "When", s.trigger), (":material/lightbulb:", "Why", s.intent),
-            (":material/straighten:", "Typical",
-             s.typical and f"{s.typical} :gray[({len(s.runs)} {noun(len(s.runs))})]")]
-    for icon, label, text in rows:
-        if text:
-            st.markdown(f"{icon} **{label}** — {text}")
+    rows = [("When", s.trigger), ("Why", s.intent),
+            ("Typical", s.typical and f"{s.typical} :gray[({len(s.runs)} {noun(len(s.runs))})]")]
+    lines = [f":gray[{label}]&ensp;{text}" for label, text in rows if text]
     if s.limit:   # "Unchecked" is shown once at the top of the page, not on every step
-        st.markdown(f":red[:material/block: **Hard limit** — {s.limit}]")
+        lines.append(f":red[Hard limit]&ensp;:red[{s.limit}]")
+    st.markdown("  \n".join(lines))
 
 
 def _limit_value(lim, prof: Profile) -> str:
@@ -466,7 +519,7 @@ def _limit_value(lim, prof: Profile) -> str:
 
 def limit_badges(s: Step, prof: Profile) -> str:
     """Short red chips for the hard limits beside a step, e.g. "max 85 kt"."""
-    return " ".join(f":red-badge[:material/block: {_limit_value(lim, prof)}]" for lim in s.limits)
+    return " ".join(f":red-badge[{_limit_value(lim, prof)}]" for lim in s.limits)
 
 
 def limit_name(lim, prof: Profile) -> str:

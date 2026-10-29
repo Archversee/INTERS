@@ -12,9 +12,10 @@ from sim2sop import storage
 
 def render() -> None:
     prof = ui.profile()
-    st.title(f":material/monitoring: {ui.noun(cap=True)} data explorer")
-    st.write(f"What the system extracted from one {ui.noun()}: the phases it detected, the actions it found, and "
-             "which spoken callout explains each action. The AI never sees this raw data — only the action list.")
+    ui.page_header(f"{ui.noun(cap=True)} data explorer",
+                   f"What the system extracted from one {ui.noun()}: the phases it detected, the actions it "
+                   "found, and which spoken callout explains each action. The AI never sees this raw data, only "
+                   "the action list.", eyebrow="Tools")
     runs = storage.list_runs(prof.procedure)
     if not runs:
         st.info(f"No {ui.noun(2)} yet.", icon=":material/info:")

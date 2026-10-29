@@ -8,8 +8,31 @@ import ui
 from sim2sop import guidelines_store as store
 from sim2sop import references, storage
 
+HOW = [
+    ("Record", "Instructors fly the procedure in the simulator and say what they are doing. Upload the "
+               "recording, or load the sample data."),
+    ("Learn", "The app finds every action, lines the recordings up, and works out what instructors "
+              "typically do and when."),
+    ("Approve", "Guidelines are written and checked against the official limits. You see exactly what "
+                "changed and publish with one click."),
+]
+FEATURES = [
+    ("Every number is traced", "Each value in a guideline is checked against the recorded data. Nothing is "
+                               "made up, even when an AI writes the wording."),
+    ("Official limits come first", "Hard limits are quoted word for word from the manuals and SOPs. A value "
+                                   "past a limit is capped and flagged, never taught."),
+    ("Gets better with every session", "Typical ranges tighten as recordings are added, and actions only "
+                                       "some instructors take become technique notes."),
+    ("Learns your house style", "Edit a guideline once and similar steps are written the same way next "
+                                "time."),
+    ("A human signs off", "Each new version opens a review: approve or reject each change, then publish. "
+                          "A rejected change is not proposed again."),
+    ("Ready for the classroom", "Read it as a checklist or in full detail, and download a printable "
+                                "version for students."),
+]
 
-def _next_step(runs, docs, doc) -> tuple[str, str, str]:
+
+def _next_step(runs, docs) -> tuple[str, str, str]:
     if not runs:
         return (f"Upload the first instructor {ui.noun()}. The guidelines are created from it automatically.",
                 "runs", f"Upload {ui.noun(2)}")
@@ -19,70 +42,77 @@ def _next_step(runs, docs, doc) -> tuple[str, str, str]:
     return f"Add more {ui.noun(2)} to refine the guidelines, or read them.", "guidelines", "Open the guidelines"
 
 
+def _hero() -> None:
+    st.html(f"""
+<div class="hero">
+  <span class="tag">For flight schools, driving schools and maritime academies</span>
+  <h1>Turn every simulator session into guidelines students can trust.</h1>
+  <p>Sim-to-SOP learns how your instructors actually do it from recorded simulator {ui.noun(2)}, writes it up as
+     clear step-by-step guidelines, and checks every number against the official limits.</p>
+  <div class="proof"><span><b>Every number</b> traced to recorded data</span>
+    <span><b>Hard limits</b> quoted from your manuals</span><span><b>You approve</b> every change</span></div>
+</div>""")
+
+
+def _cards(items: list[tuple[str, str]], numbered: bool) -> None:
+    for row in range(0, len(items), 3):
+        cols = st.columns(3)
+        for i, (col, (title, text)) in enumerate(zip(cols, items[row:row + 3]), start=row + 1):
+            num = f'<div class="num">{i}</div>' if numbered else ""
+            col.html(f'<div class="feature">{num}<h4>{title}</h4><p>{text}</p></div>')
+
+
 def render() -> None:
     prof = ui.profile()
     runs = storage.list_runs(prof.procedure)
     docs = references.list_references(prof.procedure)
     doc = store.latest(prof.procedure)
 
-    st.title("Sim-to-SOP")
-    st.markdown(f"#### Turn instructor simulator {ui.noun(2)} into step-by-step guidelines for students — "
-                "always inside the official limits.")
-    st.caption(f"Procedure: {ui.PROFILE_NAMES.get(st.session_state['profile_name'], prof.title)}")
-
+    _hero()
     ui.pending_banner(prof, key="home-review")
-    msg, page, label = _next_step(runs, docs, doc)
+
+    msg, page, label = _next_step(runs, docs)
     with st.container(border=True):
-        st.markdown(f"**:material/assistant_navigation: Next step:** {msg}")
-        if runs or prof.domain not in ui.GENERATED:
-            ui.link_button(page, label, key="home-next")
-        else:
-            a, b = st.columns(2)
-            with a:
-                if st.button("Load sample data", type="primary", icon=":material/auto_awesome:", width="stretch",
-                             help=f"Five generated instructor {ui.noun(2)}, checked against the built-in "
-                                  "official rules. The guidelines are created straight away."):
+        text, action = st.columns([3, 2], vertical_alignment="center")
+        text.markdown(f"**Next step** · {ui.PROFILE_NAMES.get(st.session_state['profile_name'], prof.title)}  \n{msg}")
+        with action:
+            if runs or prof.domain not in ui.GENERATED:
+                ui.link_button(page, label, key="home-next")
+            else:
+                a, b = st.columns(2)
+                if a.button("Try with sample data", type="primary", icon=":material/play_arrow:", width="stretch",
+                            help=f"Five generated instructor {ui.noun(2)}, checked against the built-in "
+                                 "official rules. The guidelines are created straight away."):
                     ui.load_sample(prof)
                     st.rerun()
-            with b:
-                ui.link_button(page, f"Upload my own {ui.noun(2)}", icon=":material/upload:", primary=False,
-                               key="home-next")
-            st.caption("New here? Sample data shows the whole workflow in one click. *Start over* in the sidebar "
-                       "clears it again.")
+                with b:
+                    ui.link_button(page, f"Upload {ui.noun(2)}", icon=":material/upload:", primary=False,
+                                   key="home-next")
+        if not runs and prof.domain in ui.GENERATED:
+            st.caption("New here? The sample data runs the whole workflow in under a minute. *Start over* in the "
+                       "sidebar clears it again.")
 
-    cols = st.columns(3)
-    cards = [
-        (f"1 · Instructor {ui.noun(2)}", ":material/flight:", "runs",
-         f"**{len(runs)}** {ui.noun(len(runs))} recorded" if runs else f"No {ui.noun(2)} yet", bool(runs)),
-        ("2 · Guidelines", ":material/checklist:", "guidelines",
-         f"**Version {doc.version}** · {len(doc.steps)} steps · {doc.status}" if doc
-         else f"Created automatically from the first {ui.noun()}", doc is not None),
-        ("Official documents (the rules)", ":material/menu_book:", "references",
-         f"**{len(docs)}** document{'s' if len(docs) != 1 else ''} setting the hard limits" if docs
-         else "None yet — guidelines will be unchecked", bool(docs)),
-    ]
-    for col, (title, icon, page, text, done) in zip(cols, cards):
-        with col.container(border=True, height="stretch"):
-            st.markdown(f"{icon} **{title}**")
-            st.markdown(f":green[:material/check_circle:] {text}" if done
-                        else f":gray[:material/radio_button_unchecked:] {text}")
-            ui.link_button(page, "Open", primary=False, key=f"home-{page}")
+    st.subheader("Where you are")
+    c = st.columns(4)
+    c[0].metric(f"Instructor {ui.noun(2)}", len(runs), border=True)
+    c[1].metric("Guideline steps", len(doc.steps) if doc else 0, border=True,
+                help=f"Version {doc.version}, {doc.status}" if doc else "Created from the first recording")
+    c[2].metric("Official hard limits", sum(len(d.limits) for d in docs), border=True,
+                help=f"From {len(docs)} official document{'s' if len(docs) != 1 else ''}")
+    c[3].metric("Confidence", f"{doc.metrics['mean_confidence']:.0%}" if doc else "—", border=True,
+                help="How consistently instructors do each step. Rises as recordings are added.")
+    links = st.columns(4)
+    for col, (key, text) in zip(links, [("runs", f"Instructor {ui.noun(2)}"), ("guidelines", "Guidelines"),
+                                         ("references", "Official documents"), ("progress", "Progress")]):
+        with col:
+            ui.link_button(key, text, primary=False, key=f"home-{key}")
 
     st.subheader("How it works")
-    a, b, c = st.columns(3)
-    with a.container(border=True, height="stretch"):
-        st.markdown(":material/menu_book: **Official limits come first**")
-        st.write("The official manuals and SOPs set hard limits. Guidelines never go past them; "
-                 "anything that does is capped and flagged.")
-    with b.container(border=True, height="stretch"):
-        st.markdown(f":material/flight: **Each {ui.noun()} teaches it more**")
-        st.write(f"Every instructor {ui.noun()} is added to the guidelines straight away: typical ranges tighten, "
-                 "and actions only some instructors do become technique notes.")
-    with c.container(border=True, height="stretch"):
-        st.markdown(":material/fact_check: **You approve every change**")
-        st.write(f"After each {ui.noun()} a review window shows exactly what changed and why. "
-                 "Approve or reject each change, then publish.")
+    _cards(HOW, numbered=True)
+    st.subheader("Why instructors use it")
+    _cards(FEATURES, numbered=False)
 
-    st.caption(f"Want a particular kind of {ui.noun()}? Make one in the **{ui.noun(cap=True)} generator** and add it "
-               "straight to the "
-               "guidelines. To clear everything and start again, use *Start over* in the sidebar.")
+    st.html('<div class="domains"><span>Air · Cessna 172 circuit</span><span>Land · Parallel parking</span>'
+            '<span>Sea · Harbour exit</span></div>')
+    st.caption(f"Pick a procedure in the sidebar. Want a particular kind of {ui.noun()}? Make one in the "
+               f"**{ui.noun(cap=True)} generator** and add it straight to the guidelines.")
