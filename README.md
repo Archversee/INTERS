@@ -117,7 +117,7 @@ If the provider is unreachable, the pipeline falls back to the template writer. 
 | [src/sim2sop/agent/](src/sim2sop/agent/) | LLM clients, planner, writer, verifier, LangGraph graph |
 | [src/sim2sop/pipeline.py](src/sim2sop/pipeline.py) | create / update / approve / edit, and the reason for each change |
 | [src/sim2sop/guidelines_store.py](src/sim2sop/guidelines_store.py) | Versions and step-level diff |
-| [app/](app/) | Streamlit app: Home → Instructor flights (upload only: a .zip of flight folders or a telemetry CSV) → Official documents → Guidelines. Each upload or document updates the guidelines and pops up a review window. Plus Progress (version history, one guideline across versions, Start over), a Flight generator (random flights with chosen technique, a rundown of each, a zip to upload, and the data-format guide) and a flight data explorer ([views/](app/views/), shared widgets in [ui.py](app/ui.py)) |
+| [app/](app/) | Streamlit app: Home → Instructor flights (upload only: a .zip of flight folders or a telemetry CSV) → Guidelines, with Official documents (the rules) in their own section. Each upload or document updates the guidelines and pops up a review window. Plus Progress (version history, one guideline across versions, Start over), a Flight generator (random flights with chosen technique, a rundown of each, a zip to upload, and the data-format guide) and a flight data explorer ([views/](app/views/), shared widgets in [ui.py](app/ui.py)) |
 
 ## CLI
 

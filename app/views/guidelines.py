@@ -1,4 +1,4 @@
-"""Step 3: the guidelines themselves."""
+"""Step 2: the guidelines themselves."""
 
 from __future__ import annotations
 

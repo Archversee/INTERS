@@ -304,7 +304,7 @@ def _format_guide(prof: Profile) -> None:
         st.code(json.dumps({"run_id": "my_flight_01", "instructor": "instructor_3"}, indent=2), language="json")
         st.caption("Both fields are optional: the folder name is used as the flight's name if `run_id` is missing.")
     with t5:
-        st.markdown("**In this app:** *1 · Instructor flights* → *Upload a recorded flight* → choose "
+        st.markdown("**In this app:** *1 · Instructor flights* → *Upload flight data* → choose "
                     "telemetry.csv, and annotations.json if you have one.")
         ui.link_button("runs", "Open Instructor flights", key="gen-runs", primary=False)
         st.markdown("**From the command line** (a single flight folder, or a folder of flight folders):")

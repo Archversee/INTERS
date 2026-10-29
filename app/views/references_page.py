@@ -1,4 +1,4 @@
-"""Step 2: official documents (reference SOPs) that set the hard limits."""
+"""Rules: official documents (reference SOPs) that set the hard limits."""
 
 from __future__ import annotations
 
