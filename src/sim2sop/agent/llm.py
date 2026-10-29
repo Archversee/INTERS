@@ -36,6 +36,10 @@ class LLMError(RuntimeError):
     pass
 
 
+class LLMUnreachable(LLMError):
+    """The server did not answer in time or refused the connection (as opposed to an error reply)."""
+
+
 class LLMClient:
     provider = "base"
 
@@ -60,6 +64,8 @@ class LLMClient:
     def _post(self, url: str, payload: dict, headers: dict | None = None) -> dict:
         try:
             r = httpx.post(url, json=payload, headers=headers or {}, timeout=self.timeout)
+        except httpx.TransportError as e:   # timeouts and connection failures
+            raise LLMUnreachable(f"{self.name}: {e.__class__.__name__} after {self.timeout:.0f}s") from e
         except httpx.HTTPError as e:
             raise LLMError(f"{self.name}: {e}") from e
         if r.status_code >= 400:

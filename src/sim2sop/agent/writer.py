@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 
-from sim2sop.agent.llm import LLMClient, LLMError, parse_json, run_with_tools
+from sim2sop.agent.llm import LLMClient, LLMError, LLMUnreachable, parse_json, run_with_tools
 from sim2sop.agent.verifier import facts_table
 from sim2sop.learn import memory
 from sim2sop.profiles import Profile
@@ -124,6 +124,8 @@ class LLMWriter:
         self.use_tools = use_tools and not refs.empty
         self.fallback = TemplateWriter(profile)
         self.name = llm.name
+        self.down: str | None = None   # set when the server stops answering: the rest of the build
+        self.fallback_steps = 0        # then uses the template instead of waiting on every step
 
     def _prompt(self, step: Step, feedback: list[str] | None) -> str:
         p = self.profile
@@ -150,18 +152,27 @@ class LLMWriter:
         return msg
 
     def write(self, step: Step, feedback: list[str] | None = None) -> dict[str, str | None]:
+        if self.down:
+            self.fallback_steps += 1
+            return self.fallback.write(step, feedback)
         messages = [{"role": "user", "content": self._prompt(step, feedback)}]
         try:
             if self.use_tools:
                 handlers = {"search_references": lambda query: [c.model_dump() for c in self.refs.search(query)]}
                 try:
                     reply = run_with_tools(self.llm, messages, [SEARCH_TOOL], handlers, system=SYSTEM_PROMPT)
+                except LLMUnreachable:
+                    raise
                 except LLMError:
                     self.use_tools = False  # model/provider without tool support: plain JSON from now on
                     reply = self.llm.chat(messages, system=SYSTEM_PROMPT, json_mode=True)
             else:
                 reply = self.llm.chat(messages, system=SYSTEM_PROMPT, json_mode=True)
             data = parse_json(reply.text)
+        except LLMUnreachable as e:
+            self.down = str(e)
+            self.fallback_steps += 1
+            return self.fallback.write(step, feedback)
         except (LLMError, ValueError) as e:
             step.flags.append(f"LLM writer failed ({e.__class__.__name__}); template used")
             return self.fallback.write(step, feedback)

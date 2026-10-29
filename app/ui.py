@@ -138,6 +138,12 @@ def reset_all(prof: Profile, load_rules: bool = True) -> None:
 def run_build(label: str, fn):
     """Run fn(progress) inside a status box with a progress bar."""
     with st.status(label, expanded=True) as status:
+        provider = st.session_state.get("llm_provider", config.LLM_PROVIDER)
+        if provider != "none":
+            st.caption(f":material/smart_toy: The AI writer ({st.session_state.get('llm_model') or provider}) is "
+                       "wording each guideline, which can take a while per step. If it stops answering, the "
+                       "built-in wording is used for the rest. For instant results, switch the AI writer to "
+                       "*No AI* in the sidebar.")
         bar = st.progress(0.0, text="Analysing the flights and checking the official limits…")
 
         def progress(i: int, n: int, msg: str) -> None:
@@ -156,6 +162,8 @@ def refresh_guidelines(prof: Profile, title: str) -> Guidelines | None:
     doc = run_build("Updating the guidelines" if exists else "Creating the guidelines",
                     (lambda p: update_guidelines(prof, llm(), p)) if exists
                     else (lambda p: create_guidelines(prof, llm(), p)))
+    if cut := next((f.message for f in doc.flags if f.message.startswith("The AI writer")), None):
+        st.session_state["warn"] = cut
     if doc.pending:
         st.session_state["review_queue"] = {"version": doc.version, "title": title}
     else:
@@ -167,6 +175,8 @@ def show_queued() -> None:
     """Toasts and the review popup queued by the previous action (call once per run)."""
     if msg := st.session_state.pop("toast", None):
         st.toast(msg, icon=":material/info:")
+    if msg := st.session_state.pop("warn", None):
+        st.toast(msg, icon=":material/warning:", duration="long")
     if q := st.session_state.get("review_queue"):
         review_dialog(q["version"], q["title"])
 

@@ -111,6 +111,10 @@ def _build(profile: Profile, *, mode: str, llm: LLMClient | None, previous: Guid
     flags += state["flags"]
     flags += violation_report(runs, limits, profile)
     flags += [f for r in runs for f in r.flags]
+    if getattr(writer, "down", None):
+        flags.append(Flag(kind="data", message=(
+            f"The AI writer ({writer.name}) stopped answering ({writer.down}); {writer.fallback_steps} step(s) "
+            "use the built-in wording instead. Check the Ollama server, or switch the AI writer off.")))
 
     doc = Guidelines(
         procedure=profile.procedure, domain=profile.domain, title=profile.title, mode=mode,

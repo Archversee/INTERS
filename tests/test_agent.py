@@ -3,7 +3,7 @@ import json
 import pytest
 
 from sim2sop.agent.graph import build_graph
-from sim2sop.agent.llm import LLMClient, LLMReply, ToolCall, get_llm
+from sim2sop.agent.llm import LLMClient, LLMReply, LLMUnreachable, ToolCall, get_llm
 from sim2sop.agent.planner import plan
 from sim2sop.agent.verifier import verify_step
 from sim2sop.agent.writer import LLMWriter
@@ -78,6 +78,31 @@ def test_graph_rewrites_until_verified(data_dir, air_raw):
     state = graph.invoke({})
     assert all(s.verified for s in state["steps"])
     assert fake.calls == 2 * len(state["steps"])  # one failed draft + one rewrite per step
+
+
+class StuckLLM(LLMClient):
+    """A server that is up but never answers in time."""
+    provider = "fake"
+
+    def __init__(self):
+        super().__init__(model="stuck")
+        self.calls = 0
+
+    def chat(self, *args, **kwargs):
+        self.calls += 1
+        raise LLMUnreachable("stuck: ReadTimeout after 120s")
+
+
+def test_unresponsive_llm_is_asked_once_then_template_is_used(data_dir, air_raw):
+    p = load_profile("air_c172_circuit")
+    run = ingest_run(air_raw[1], p)
+    refs = ReferenceIndex([])
+    stuck = StuckLLM()
+    writer = LLMWriter(stuck, p, refs)
+    state = build_graph(p, writer, lambda: plan([run], p, refs, [], [])).invoke({})
+    assert stuck.calls == 1  # not once per step (each would wait for the full timeout)
+    assert writer.down and writer.fallback_steps == len(state["steps"])
+    assert all(s.verified and s.action for s in state["steps"])
 
 
 def test_limit_text_is_quoted_not_model_written(data_dir, air_raw):
