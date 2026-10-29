@@ -26,7 +26,7 @@ def _rules(prof, active) -> None:
     st.subheader(f"Rules in force ({len(limits) + len(reqs)})")
     if not limits and not reqs:
         st.info("No rules yet. Upload an official document below to check the guidelines against "
-                "official limits.", icon=":material/info:")
+                "official limits.")
         return
     st.caption(f"The guidelines never go past these. A {ui.noun()} that does is flagged, and its value is left out "
                "of the typical range.")
@@ -73,7 +73,7 @@ def render() -> None:
 
     _ai_manual(prof)
 
-    with st.expander("Upload your own document", icon=":material/upload:"):
+    with st.expander("Upload your own document"):
         st.caption("A Markdown file with its limits listed at the top (see the samples), or a PDF plus a "
                    "`.limits.yaml` file. A newer revision of a document replaces the older one.")
         up = st.file_uploader("Document", type=["md", "txt", "pdf"])
@@ -132,7 +132,7 @@ def _ai_manual(prof) -> None:
         rev = c3.text_input("Revision", key=f"manual-rev-{n}")
         if not ai_on:
             st.caption("Switch the AI writer on in the sidebar to use this.")
-        if st.button("Find the rules with AI", type="primary", icon=":material/auto_awesome:",
+        if st.button("Find the rules with AI", type="primary",
                      disabled=not (up and ai_on and title.strip()), key="manual-go"):
             folder = config.DATA_DIR / "uploads" / prof.procedure
             folder.mkdir(parents=True, exist_ok=True)
@@ -189,15 +189,15 @@ def _manual_review(prof, m: dict) -> None:
                        "are unticked: the AI most likely picked the wrong signal (steering angle for angle to the "
                        "kerb) or turned a maximum into a minimum. Tick one only if the rule really is that strict.")
     else:
-        st.info("No rule passed the checks. The manual can still be added for citations.", icon=":material/info:")
+        st.info("No rule passed the checks. The manual can still be added for citations.")
     if aside:
-        with st.expander(f"Set aside by the checks ({len(aside)})", icon=":material/block:"):
+        with st.expander(f"Set aside by the checks ({len(aside)})"):
             st.dataframe(pd.DataFrame([{"Proposed": p.text or p.key or p.signal, "The AI quoted": p.quote,
                                         "Why it was set aside": "; ".join(p.problems)} for p in aside]),
                          hide_index=True, width="stretch")
     b1, b2 = st.columns(2)
     if b1.button(f"Add the manual with {len(chosen)} rule{'s' if len(chosen) != 1 else ''}", type="primary",
-                 icon=":material/add_task:", width="stretch", key="manual-add"):
+                 width="stretch", key="manual-add"):
         try:
             doc = manuals.add_manual(prof.procedure, Path(m["path"]), m["title"], m["kind"], m["revision"], chosen)
         except references.BuiltinDocument as e:
@@ -207,7 +207,7 @@ def _manual_review(prof, m: dict) -> None:
         ss["manual_n"] += 1
         _added(prof, doc)
         st.rerun()
-    if b2.button("Discard", icon=":material/delete:", width="stretch", key="manual-discard"):
+    if b2.button("Discard", width="stretch", key="manual-discard"):
         ss.pop("manual", None)
         ss["manual_n"] += 1
         st.rerun()

@@ -45,23 +45,20 @@ def _next_step(runs, docs) -> tuple[str, str, str]:
 def _hero() -> None:
     st.html(f"""
 <div class="hero">
-  <span class="tag">For flight schools, driving schools and maritime academies</span>
+  <div class="tag">For flight schools, driving schools and maritime academies</div>
   <h1>Turn every simulator session into guidelines <em>students can trust.</em></h1>
   <p>Sim-to-SOP learns how your instructors actually do it from recorded simulator {ui.noun(2)}, writes it up as
      clear step-by-step guidelines, and checks every number against the official limits.</p>
-  <div class="proof"><span><i></i>Every number traced to recorded data</span>
-    <span><i></i>Hard limits quoted from your manuals</span><span><i></i>You approve every change</span></div>
+  <div class="proof"><span>Every number traced to recorded data</span>
+    <span>Hard limits quoted from your manuals</span><span>You approve every change</span></div>
 </div>""")
 
 
-def _cards(items: list[tuple[str, str]], numbered: bool) -> None:
-    """Cards in rows of three. The numbered steps carry the accent; the feature cards stay plain."""
-    for row in range(0, len(items), 3):
-        cols = st.columns(3)
-        for i, (col, (title, text)) in enumerate(zip(cols, items[row:row + 3]), start=row + 1):
-            num = f'<div class="num">{i}</div>' if numbered else ""
-            plain = "" if numbered else " plain"
-            col.html(f'<div class="feature{plain}">{num}<h4>{title}</h4><p>{text}</p></div>')
+def _grid(items: list[tuple[str, str]], cls: str, numbered: bool = False) -> None:
+    """Items on hairlines in a grid (no cards): the steps in three columns, the features in two."""
+    cells = "".join(f"<div>{f'<b>{i:02d}</b>' if numbered else ''}<h4>{t}</h4><p>{x}</p></div>"
+                    for i, (t, x) in enumerate(items, start=1))
+    st.html(f'<div class="{cls}">{cells}</div>')
 
 
 def render() -> None:
@@ -74,28 +71,22 @@ def render() -> None:
     ui.pending_banner(prof, key="home-review")
 
     msg, page, label = _next_step(runs, docs)
-    with st.container(border=True):
-        text, action = st.columns([1, 1], vertical_alignment="center")
-        text.markdown(f"**Next step** · {ui.PROFILE_NAMES.get(st.session_state['profile_name'], prof.title)}  \n{msg}")
-        with action:
-            if runs or prof.domain not in ui.GENERATED:
-                ui.link_button(page, label, key="home-next")
-            else:
-                a, b = st.columns(2)
-                if a.button("Try with sample data", type="primary", icon=":material/play_arrow:", width="stretch",
-                            key="tone-attn-sample",
-                            help=f"Five generated instructor {ui.noun(2)}, checked against the built-in "
-                                 "official rules. The guidelines are created straight away."):
-                    ui.load_sample(prof)
-                    st.rerun()
-                with b:
-                    ui.link_button(page, f"Upload {ui.noun(2)}", icon=":material/upload:", primary=False,
-                                   key="home-next")
-        if not runs and prof.domain in ui.GENERATED:
-            st.caption("New here? The sample data runs the whole workflow in under a minute. *Start over* in the "
-                       "sidebar clears it again.")
+    text, action = st.columns([3, 2], vertical_alignment="center")
+    text.markdown(f"**Next step** · {ui.PROFILE_NAMES.get(st.session_state['profile_name'], prof.title)}  \n{msg}")
+    with action:
+        if runs or prof.domain not in ui.GENERATED:
+            ui.link_button(page, label, key="home-next")
+        else:
+            a, b = st.columns(2)
+            if a.button("Try with sample data", type="primary", width="stretch", key="tone-attn-sample",
+                        help=f"Five generated instructor {ui.noun(2)}, checked against the built-in official "
+                             "rules. The guidelines are created straight away. *Start over* in the sidebar "
+                             "clears it again."):
+                ui.load_sample(prof)
+                st.rerun()
+            with b:
+                ui.link_button(page, f"Upload {ui.noun(2)}", primary=False, key="home-next")
 
-    st.subheader("Where you are")
     stats = [
         (f"Instructor {ui.noun(2)}", len(runs), None),
         ("Guideline steps", len(doc.steps) if doc else 0,
@@ -107,19 +98,12 @@ def render() -> None:
     ]
     for i, (col, (label, value, tip)) in enumerate(zip(st.columns(4), stats), start=1):
         with col.container(key=f"stat-{i}"):
-            st.metric(label, value, border=True, help=tip)
-    links = st.columns(4)
-    for col, (key, text) in zip(links, [("runs", f"Instructor {ui.noun(2)}"), ("guidelines", "Guidelines"),
-                                         ("references", "Official documents"), ("progress", "Progress")]):
-        with col:
-            ui.link_button(key, text, primary=False, key=f"home-{key}")
+            st.metric(label, value, help=tip)
 
     st.subheader("How it works")
-    _cards(HOW, numbered=True)
+    _grid(HOW, "steps", numbered=True)
     st.subheader("Why instructors use it")
-    _cards(FEATURES, numbered=False)
-
-    st.html('<div class="domains"><span>Air · Cessna 172 circuit</span><span>Land · Parallel parking</span>'
-            '<span>Sea · Harbour exit</span></div>')
-    st.caption(f"Pick a procedure in the sidebar. Want a particular kind of {ui.noun()}? Make one in the "
-               f"**{ui.noun(cap=True)} generator** and add it straight to the guidelines.")
+    _grid(FEATURES, "facts")
+    st.caption("Procedures: Air · Cessna 172 circuit, Land · Parallel parking, Sea · Harbour exit. Pick one in the "
+               f"sidebar. Want a particular kind of {ui.noun()}? Make one in the **{ui.noun(cap=True)} generator** "
+               "and add it straight to the guidelines.")

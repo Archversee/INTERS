@@ -17,16 +17,16 @@ st.set_page_config(page_title="Sim-to-SOP · simulator data to student guideline
 ui.style()
 
 ui.PAGES.update({
-    "home": st.Page(home.render, title="Home", icon=":material/home:", url_path="home", default=True),
-    "runs": st.Page(runs.render, title=f"1 · Instructor {ui.noun(2)}", icon=":material/flight:", url_path="flights"),
-    "references": st.Page(references_page.render, title="Official documents", icon=":material/menu_book:",
+    "home": st.Page(home.render, title="Home", url_path="home", default=True),
+    "runs": st.Page(runs.render, title=f"1 · Instructor {ui.noun(2)}", url_path="flights"),
+    "references": st.Page(references_page.render, title="Official documents",
                           url_path="documents"),
-    "guidelines": st.Page(guidelines.render, title="2 · Guidelines", icon=":material/checklist:",
+    "guidelines": st.Page(guidelines.render, title="2 · Guidelines",
                           url_path="guidelines"),
-    "progress": st.Page(progress.render, title="Progress", icon=":material/trending_up:", url_path="progress"),
-    "generator": st.Page(generator.render, title=f"{ui.noun(cap=True)} generator", icon=":material/science:",
+    "progress": st.Page(progress.render, title="Progress", url_path="progress"),
+    "generator": st.Page(generator.render, title=f"{ui.noun(cap=True)} generator",
                          url_path="generator"),
-    "explorer": st.Page(explorer.render, title=f"{ui.noun(cap=True)} data explorer", icon=":material/monitoring:",
+    "explorer": st.Page(explorer.render, title=f"{ui.noun(cap=True)} data explorer",
                         url_path="explorer"),
 })
 nav = st.navigation({

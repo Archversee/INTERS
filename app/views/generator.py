@@ -323,10 +323,10 @@ def _form(prof: Profile, sim: Sim) -> None:
         s1, s2, s3, s4 = st.columns([2, 1, 1, 2], vertical_alignment="bottom")
         s1.number_input("Random seed", min_value=0, max_value=999_999, step=1, key="gen_seed",
                         help=f"The same seed and choices always give the same {ui.noun()}.")
-        s2.button("New seed", icon=":material/casino:", on_click=_new_seed, width="stretch")
-        s3.button("Surprise me", icon=":material/shuffle:", on_click=_surprise, args=(sim,), width="stretch",
+        s2.button("New seed", on_click=_new_seed, width="stretch")
+        s3.button("Surprise me", on_click=_surprise, args=(sim,), width="stretch",
                   help="Random choices and seed.")
-        s4.button(f"Generate {ui.noun()}", type="primary", icon=":material/auto_awesome:", on_click=_generate,
+        s4.button(f"Generate {ui.noun()}", type="primary", on_click=_generate,
                   args=(prof, sim), width="stretch", key="generate")
 
 
@@ -364,7 +364,7 @@ def _rundown(prof: Profile, sim: Sim, run_dir: Path) -> None:
             st.caption(f"Checked against {source}. When this {ui.noun()} is added, the guidelines leave these "
                        "values out of the typical range.")
         elif limits:
-            st.success(f"Stays within all {len(limits)} hard limits of {source}.", icon=":material/verified:")
+            st.success(f"Stays within all {len(limits)} hard limits of {source}.")
         for u in unmatched:
             st.warning(f'Callout "{u}" has no matching action — it will be flagged for the instructor.',
                        icon=":material/mic_off:")
@@ -383,11 +383,11 @@ def _rundown(prof: Profile, sim: Sim, run_dir: Path) -> None:
         st.markdown("**Phase by phase** (typical values in each phase)")
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
-        with st.expander(f"Actions and callouts ({len(record.events)})", icon=":material/list:"):
+        with st.expander(f"Actions and callouts ({len(record.events)})"):
             st.dataframe(pd.DataFrame([{"Time": _mmss(e.t), "Phase": ui.phase_title(e.phase or ""),
                                         "Action": e.label, "Instructor callout": e.annotation or ""}
                                        for e in record.events]), hide_index=True, width="stretch")
-        with st.expander("The raw files", icon=":material/description:"):
+        with st.expander("The raw files"):
             t1, t2, t3 = st.tabs(["telemetry.csv", "annotations.json", "meta.json"])
             with t1:
                 st.caption("First 10 rows, exactly as written by the simulator logger.")
@@ -398,15 +398,15 @@ def _rundown(prof: Profile, sim: Sim, run_dir: Path) -> None:
         b1, b2, b3 = st.columns(3)
         if added:
             b1.markdown(":green[:material/check_circle:] Added to the guidelines.")
-        elif b1.button("Add to the guidelines", type="primary", icon=":material/add_task:", width="stretch",
+        elif b1.button("Add to the guidelines", type="primary", width="stretch",
                        help="The guidelines update straight away and show you what changed."):
             ingest_run(run_dir, prof)
             ui.refresh_guidelines(prof, f"{ui.run_title(run_dir.name)} added")
             st.rerun()
         b2.download_button("Download (zip)", _zip(run_dir), file_name=f"{run_dir.name}.zip",
-                           mime="application/zip", icon=":material/download:", width="stretch",
+                           mime="application/zip", width="stretch",
                            help=f"The {ui.noun()} in the simulator's file format: an example to upload, or to keep.")
-        if b3.button("Discard", icon=":material/delete:", width="stretch",
+        if b3.button("Discard", width="stretch",
                      help=f"Delete the generated files ({ui.noun(2)} already uploaded stay)."):
             shutil.rmtree(run_dir, ignore_errors=True)
             st.session_state.pop("gen_current", None)
@@ -460,7 +460,7 @@ def render() -> None:
     sim = SIMS.get(prof.domain)
     if sim is None:
         st.info("The generator makes Cessna 172 circuits and parallel parking so far. Pick one of those "
-                "procedures in the sidebar.", icon=":material/info:")
+                "procedures in the sidebar.")
         return
 
     _form(prof, sim)
@@ -476,6 +476,6 @@ def render() -> None:
         st.session_state["gen_current"] = current
         _rundown(prof, sim, _out_dir(prof) / current)
     else:
-        st.info(f"Choose the options above and press **Generate {ui.noun()}**.", icon=":material/arrow_upward:")
+        st.info(f"Choose the options above and press **Generate {ui.noun()}**.")
     st.divider()
     _format_guide(prof, sim)

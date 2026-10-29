@@ -18,7 +18,7 @@ def render() -> None:
                    "the action list.", eyebrow="Tools")
     runs = storage.list_runs(prof.procedure)
     if not runs:
-        st.info(f"No {ui.noun(2)} yet.", icon=":material/info:")
+        st.info(f"No {ui.noun(2)} yet.")
         return
     rid = st.selectbox(ui.noun(cap=True), [r.run_id for r in runs], format_func=ui.run_title)
     rec = next(r for r in runs if r.run_id == rid)

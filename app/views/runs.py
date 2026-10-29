@@ -62,7 +62,7 @@ def _upload(prof) -> None:
         if len(files) == 1 and not files[0].name.lower().endswith(".zip"):
             notes = st.file_uploader(f"Callouts for this {ui.noun()} (annotations.json, optional)", type=["json"],
                                      key=f"up-notes-{n}")
-        if st.button("Add to the guidelines", type="primary", icon=":material/upload:", disabled=not files):
+        if st.button("Add to the guidelines", type="primary", disabled=not files):
             try:
                 added = _ingest(prof, files, notes)
             except Exception as e:  # a malformed file should not crash the page
@@ -75,7 +75,7 @@ def _upload(prof) -> None:
                 st.rerun()
         st.caption(f"Need data? Make a {ui.noun()} in the **{ui.noun(cap=True)} generator** and add it from "
                    "there. The file format is explained there too.")
-        ui.link_button("generator", f"Open the {ui.noun(cap=True)} generator", icon=":material/science:",
+        ui.link_button("generator", f"Open the {ui.noun(cap=True)} generator",
                        key="runs-gen", primary=False)
 
 
