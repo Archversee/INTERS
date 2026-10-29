@@ -5,7 +5,7 @@ toolbarMode = "viewer"
 [browser]
 gatherUsageStats = false
 
-# "Jet age" palette: space navy, turquoise, coral, amber and violet, on warm paper.
+# Palette: navy and turquoise with amber highlights, on warm paper. Green / red only for meaning.
 # Shared by both themes. The app follows the computer's light / dark setting by default.
 [theme]
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
@@ -28,9 +28,9 @@ linkColor = "#0B7A7A"
 greenColor = "#2E9E6B"
 redColor = "#D93F47"
 orangeColor = "#C77700"
-violetColor = "#6D4AFF"
-blueColor = "#1F5FA8"
-chartCategoricalColors = ["#0B7A7A", "#F2545B", "#E8A317", "#6D4AFF", "#2E9E6B", "#14213D"]
+violetColor = "#0B7A7A"
+blueColor = "#0B7A7A"
+chartCategoricalColors = ["#0B7A7A", "#E8A317", "#14213D", "#8A94A6"]
 
 [theme.light.sidebar]
 backgroundColor = "#14213D"
@@ -50,9 +50,9 @@ linkColor = "#5ED6D6"
 greenColor = "#3CCB8A"
 redColor = "#FF6B70"
 orangeColor = "#F4B740"
-violetColor = "#9B85FF"
-blueColor = "#5B9BEA"
-chartCategoricalColors = ["#2BC4C4", "#FF6B70", "#F4B740", "#9B85FF", "#3CCB8A", "#C9D3E6"]
+violetColor = "#2BC4C4"
+blueColor = "#2BC4C4"
+chartCategoricalColors = ["#2BC4C4", "#F4B740", "#C9D3E6", "#7A869C"]
 
 [theme.dark.sidebar]
 backgroundColor = "#0A1120"

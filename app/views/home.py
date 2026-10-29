@@ -49,20 +49,19 @@ def _hero() -> None:
   <h1>Turn every simulator session into guidelines <em>students can trust.</em></h1>
   <p>Sim-to-SOP learns how your instructors actually do it from recorded simulator {ui.noun(2)}, writes it up as
      clear step-by-step guidelines, and checks every number against the official limits.</p>
-  <div class="proof"><span><i style="background:#2BC4C4"></i>Every number traced to recorded data</span>
-    <span><i style="background:#F2545B"></i>Hard limits quoted from your manuals</span>
-    <span><i style="background:#F4B740"></i>You approve every change</span></div>
+  <div class="proof"><span><i></i>Every number traced to recorded data</span>
+    <span><i></i>Hard limits quoted from your manuals</span><span><i></i>You approve every change</span></div>
 </div>""")
 
 
-def _cards(items: list[tuple[str, str]], numbered: bool, first_accent: int = 1) -> None:
-    """Cards in rows of three, each with its own accent colour (a1…a6 in ui.CSS)."""
+def _cards(items: list[tuple[str, str]], numbered: bool) -> None:
+    """Cards in rows of three. The numbered steps carry the accent; the feature cards stay plain."""
     for row in range(0, len(items), 3):
         cols = st.columns(3)
         for i, (col, (title, text)) in enumerate(zip(cols, items[row:row + 3]), start=row + 1):
             num = f'<div class="num">{i}</div>' if numbered else ""
-            accent = (i + first_accent - 2) % 6 + 1
-            col.html(f'<div class="feature a{accent}">{num}<h4>{title}</h4><p>{text}</p></div>')
+            plain = "" if numbered else " plain"
+            col.html(f'<div class="feature{plain}">{num}<h4>{title}</h4><p>{text}</p></div>')
 
 
 def render() -> None:
@@ -107,7 +106,7 @@ def render() -> None:
          "How consistently instructors do each step. Rises as recordings are added."),
     ]
     for i, (col, (label, value, tip)) in enumerate(zip(st.columns(4), stats), start=1):
-        with col.container(key=f"accent-{i}"):
+        with col.container(key=f"stat-{i}"):
             st.metric(label, value, border=True, help=tip)
     links = st.columns(4)
     for col, (key, text) in zip(links, [("runs", f"Instructor {ui.noun(2)}"), ("guidelines", "Guidelines"),
@@ -118,9 +117,9 @@ def render() -> None:
     st.subheader("How it works")
     _cards(HOW, numbered=True)
     st.subheader("Why instructors use it")
-    _cards(FEATURES, numbered=False, first_accent=4)
+    _cards(FEATURES, numbered=False)
 
-    st.html('<div class="domains"><span class="a1">Air · Cessna 172 circuit</span>'
-            '<span class="a3">Land · Parallel parking</span><span class="a6">Sea · Harbour exit</span></div>')
+    st.html('<div class="domains"><span>Air · Cessna 172 circuit</span><span>Land · Parallel parking</span>'
+            '<span>Sea · Harbour exit</span></div>')
     st.caption(f"Pick a procedure in the sidebar. Want a particular kind of {ui.noun()}? Make one in the "
                f"**{ui.noun(cap=True)} generator** and add it straight to the guidelines.")

@@ -120,18 +120,17 @@ def doc_badges(doc: Guidelines) -> str:
 
 
 # Tints are mixed from the text colour, so the same CSS works in the light and the dark theme.
-# Palette ("jet age"): space navy, turquoise, coral, amber, violet and green. Each kind of action
-# has its own colour: publish / save = green, review = amber, AI = violet, delete = coral; the
-# turquoise primary is for everything else. Buttons pick theirs by key prefix ("tone-go-…").
+# Palette: navy and turquoise, with amber for the few things that need attention. Green and
+# red only carry meaning (publish / approve, delete / reject / limits). Buttons pick theirs by
+# key prefix ("tone-go-…"); everything else uses the turquoise primary.
 CSS = """
 <style>
-:root { --navy: #14213D; --teal: #14A3A3; --coral: #F2545B; --amber: #F4B740; --violet: #7B61FF;
-        --green: #2E9E6B; --sky: #3B82C4; }
+:root { --navy: #14213D; --teal: #14A3A3; --amber: #F4B740; --green: #2E9E6B; --red: #E5484D; }
 [data-testid="stDecoration"] { display: none; }
 .block-container { padding-top: 4.2rem; max-width: 1240px; }
 h1, h2, h3 { letter-spacing: -0.02em; }
 .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: .74rem; font-weight: 700;
-           color: var(--coral); margin-bottom: -.9rem; }
+           color: var(--teal); margin-bottom: -.9rem; }
 .lede { font-size: 1.06rem; opacity: .78; max-width: 52rem; margin: .2rem 0 1rem; }
 
 /* Buttons by role */
@@ -139,22 +138,19 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 [class*="st-key-tone-"] button[data-testid="stBaseButton-primary"]:hover { filter: brightness(1.08); }
 [class*="st-key-tone-go"] button[data-testid="stBaseButton-primary"] { background: var(--green); color: #fff; }
 [class*="st-key-tone-attn"] button[data-testid="stBaseButton-primary"] { background: var(--amber); color: var(--navy); }
-[class*="st-key-tone-ai"] button[data-testid="stBaseButton-primary"] {
-    background: linear-gradient(135deg, var(--violet), #A25CF0); color: #fff; }
-[class*="st-key-tone-danger"] button[data-testid="stBaseButton-primary"] { background: var(--coral); color: #fff; }
+[class*="st-key-tone-danger"] button[data-testid="stBaseButton-primary"] { background: var(--red); color: #fff; }
 [class*="st-key-tone-"] button[data-testid="stBaseButton-primary"]:disabled { filter: grayscale(1); opacity: .45; }
 
 /* Approve / Reject in the review */
 [class*="st-key-dec-"] button[role="radio"][aria-checked="true"]:first-of-type {
     background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); border-color: var(--green); }
 [class*="st-key-dec-"] button[role="radio"][aria-checked="true"]:last-of-type {
-    background: color-mix(in srgb, var(--coral) 16%, transparent); color: var(--coral); border-color: var(--coral); }
+    background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); border-color: var(--red); }
 
 /* Home */
 .hero { position: relative; overflow: hidden; border-radius: 1.2rem; padding: 2.7rem 2.7rem 2.3rem;
         margin-bottom: .6rem; color: #fff;
         background: radial-gradient(700px 320px at 92% -10%, rgba(43,196,196,.45), transparent 65%),
-                    radial-gradient(520px 260px at -5% 115%, rgba(242,84,91,.38), transparent 60%),
                     linear-gradient(160deg, #101B33 0%, #14213D 60%, #1B2C52 100%); }
 .hero::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .09;
                background-image: linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px),
@@ -163,32 +159,29 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .hero .tag { display: inline-block; padding: .25rem .75rem; border-radius: 999px; font-size: .78rem;
              font-weight: 700; color: var(--navy); background: var(--amber); }
 .hero h1 { color: #fff; font-size: 2.65rem; line-height: 1.12; margin: .9rem 0 .7rem; padding: 0; max-width: 46rem; }
-.hero h1 em { font-style: normal; background: linear-gradient(90deg, var(--amber), var(--coral));
-              -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero h1 em { font-style: normal; color: var(--amber); }
 .hero p { color: rgba(255,255,255,.82); font-size: 1.1rem; max-width: 44rem; margin: 0; }
 .hero .proof { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.6rem; font-size: .86rem; }
 .hero .proof span { padding: .35rem .8rem; border-radius: 999px; color: rgba(255,255,255,.88);
                     background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14); }
-.hero .proof i { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; margin-right: .45rem; }
-.feature { height: 100%; padding: 1.15rem 1.25rem; border-radius: .9rem; border-top: 3px solid var(--accent);
+.hero .proof i { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; margin-right: .45rem;
+                 background: var(--teal); }
+.feature { --accent: var(--teal); height: 100%; padding: 1.15rem 1.25rem; border-radius: .9rem;
+           border-top: 3px solid var(--accent);
            border-left: 1px solid color-mix(in srgb, currentColor 10%, transparent);
            border-right: 1px solid color-mix(in srgb, currentColor 10%, transparent);
            border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
-           background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%); }
+           background: color-mix(in srgb, currentColor 3%, transparent); }
 .feature .num { display: inline-flex; width: 2rem; height: 2rem; border-radius: .6rem; align-items: center;
                 justify-content: center; font-weight: 800; font-size: .95rem; color: #fff;
                 background: var(--accent); margin-bottom: .6rem; }
 .feature h4 { margin: 0 0 .35rem; padding: 0; font-size: 1.02rem; }
 .feature p { margin: 0; opacity: .75; font-size: .93rem; line-height: 1.5; }
-.a1 { --accent: var(--teal); } .a2 { --accent: var(--coral); } .a3 { --accent: var(--amber); }
-.a4 { --accent: var(--violet); } .a5 { --accent: var(--green); } .a6 { --accent: var(--sky); }
-[class*="st-key-accent-"] [data-testid="stMetric"] { box-shadow: inset 0 3px 0 var(--accent); }
-.st-key-accent-1 { --accent: var(--teal); } .st-key-accent-2 { --accent: var(--violet); }
-.st-key-accent-3 { --accent: var(--coral); } .st-key-accent-4 { --accent: var(--amber); }
+.feature.plain { border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent); }
+[class*="st-key-stat-"] [data-testid="stMetric"] { box-shadow: inset 0 3px 0 var(--teal); }
 .domains { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .3rem; }
 .domains span { padding: .3rem .85rem; border-radius: 999px; font-size: .85rem; font-weight: 600;
-                color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-                background: color-mix(in srgb, var(--accent) 8%, transparent); }
+                border: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
 .sidebar-foot { font-size: .78rem; opacity: .6; line-height: 1.5; }
 @media (max-width: 640px) {
   .hero { padding: 1.6rem 1.3rem; } .hero h1 { font-size: 1.8rem; }
@@ -515,9 +508,9 @@ def _change_badge(s: Step, old: Step | None = None) -> str | None:
         return f":blue-badge[:material/swap_vert: Moved from {phase_title(s.moved_from or '')}]"
     if s.change == "modified" and old is not None:
         parts = changed_parts(s, old)
-        return f":violet-badge[:material/edit: Changed: {', '.join(parts)}]" if parts else None
-    return {"added": ":green-badge[:material/add_circle: New]",
-            "modified": ":violet-badge[:material/edit: Changed]"}.get(s.change or "")
+        return f":blue-badge[:material/edit: Changed: {', '.join(parts)}]" if parts else None
+    return {"added": ":blue-badge[:material/add_circle: New]",
+            "modified": ":blue-badge[:material/edit: Changed]"}.get(s.change or "")
 
 
 def step_badges(s: Step, show_change: bool = True, old: Step | None = None) -> str:

@@ -75,7 +75,7 @@ def _build_bar(prof, doc) -> None:
             st.markdown(f"There is data the guidelines do not include yet "
                         f"({len(new_runs)} {ui.noun(len(new_runs))}, {len(new_docs)} document(s)).")
             if st.button("Update the guidelines", type="primary", icon=":material/auto_awesome:",
-                         key="tone-ai-update"):
+                         key="update-guidelines"):
                 ui.refresh_guidelines(prof, "Guidelines updated")
                 st.rerun()
 
@@ -111,7 +111,7 @@ def render() -> None:
     before = ui.previous_steps(doc)
     if view == "Checklist":
         st.caption("One line per step: **what to do** — when to do it · :red-badge[hard limit] from the official "
-                   "documents · :violet-badge[Changed: Typical] what changed since the previous version. Switch to "
+                   "documents · :blue-badge[Changed: Typical] what changed since the previous version. Switch to "
                    "*Full detail* for typical ranges, the instructor's reason, charts and edits.")
         n = 0
         for phase in phases:
