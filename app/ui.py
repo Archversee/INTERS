@@ -396,14 +396,36 @@ def _cited(doc: Guidelines, prev: Guidelines | None) -> None:
 
 # --- guideline card -----------------------------------------------------------------------------
 
-def _change_badge(s: Step) -> str | None:
+def previous_steps(doc: Guidelines) -> dict[str, Step]:
+    """Each step's counterpart in the version before (same slot), keyed by step id."""
+    if not doc.parent_version:
+        return {}
+    old = step_slots(store.load(doc.procedure, doc.parent_version).steps)
+    return {s.id: old[k] for k, s in step_slots(doc.steps).items() if k in old}
+
+
+def changed_parts(s: Step, old: Step) -> list[str]:
+    """Which parts of a guideline differ from the previous version: "When", "Typical", ..."""
+    parts = [label for f, label in FIELDS if (getattr(old, f) or "") != (getattr(s, f) or "")]
+    if (old.mandatory, old.required_by) != (s.mandatory, s.required_by):
+        parts.append("Core / technique")
+    return parts
+
+
+def _change_badge(s: Step, old: Step | None = None) -> str | None:
+    """With the previous version's step, a changed step says what changed ("Changed: Typical"),
+    so a line that reads the same in the checklist shows where the difference is."""
     if s.change == "moved":
         return f":violet-badge[Moved from {phase_title(s.moved_from or '')}]"
+    if s.change == "modified" and old is not None:
+        parts = changed_parts(s, old)
+        return f":violet-badge[Changed: {', '.join(parts)}]" if parts else None
     return {"added": ":violet-badge[New]", "modified": ":violet-badge[Changed]"}.get(s.change or "")
 
 
-def step_badges(s: Step, show_change: bool = True) -> str:
-    """`show_change` is off on a first version, where every step is new."""
+def step_badges(s: Step, show_change: bool = True, old: Step | None = None) -> str:
+    """`show_change` is off on a first version, where every step is new; `old` is the step in
+    the previous version."""
     out = []
     if s.required_by:
         out.append(":green-badge[Required by SOP]")
@@ -413,7 +435,7 @@ def step_badges(s: Step, show_change: bool = True) -> str:
         out.append(":blue-badge[Core — every instructor]")
     else:
         out.append(f":orange-badge[Technique — {s.seen_in} of {s.run_count} instructors]")
-    if show_change and (badge := _change_badge(s)):
+    if show_change and (badge := _change_badge(s, old)):
         out.append(badge)
     if s.review == "pending":
         out.append(":orange-badge[Awaiting approval]")
@@ -471,7 +493,7 @@ def when_text(lim, prof: Profile) -> str:
     return " · ".join(parts) or "Always"
 
 
-def checklist_line(n: int, s: Step, prof: Profile, show_change: bool = True) -> str:
+def checklist_line(n: int, s: Step, prof: Profile, show_change: bool = True, old: Step | None = None) -> str:
     """One line per step: what to do, when, and the hard limit."""
     when = (s.trigger or "").rstrip(".")
     if when[1:2].islower():   # "At about…" -> "at about…", but keep "IAS 70 kt"
@@ -481,7 +503,7 @@ def checklist_line(n: int, s: Step, prof: Profile, show_change: bool = True) -> 
         tags.append(":green-badge[Required]")
     elif not s.mandatory:
         tags.append(f":orange-badge[Technique · {s.seen_in}/{s.run_count}]")
-    if show_change and (badge := _change_badge(s)):
+    if show_change and (badge := _change_badge(s, old)):
         tags.append(badge)
     line = f"{n}. **{s.action.rstrip('.')}**" + (f" — {when}" if when else "")
     return " ".join([line, limit_badges(s, prof), *tags]).strip()

@@ -52,9 +52,16 @@ class ConsensusItem:
         return self.seen_in == self.run_count
 
     @property
+    def top_intents(self) -> set[str]:
+        """The callouts used most often (several when tied)."""
+        counts = Counter(e.annotation for e in self.events.values() if e.annotation)
+        return {n for n, c in counts.items() if c == max(counts.values())}
+
+    @property
     def intent(self) -> str | None:
-        notes = [e.annotation for e in self.events.values() if e.annotation]
-        return Counter(notes).most_common(1)[0][0] if notes else None
+        """The most common callout; a tie goes alphabetically, not to whichever run anchors the
+        alignment, so the choice does not flip between versions."""
+        return min(self.top_intents) if self.top_intents else None
 
     @property
     def intents(self) -> list[str]:

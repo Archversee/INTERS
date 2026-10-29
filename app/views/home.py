@@ -54,12 +54,12 @@ def render() -> None:
     cards = [
         (f"1 · Instructor {ui.noun(2)}", ":material/flight:", "runs",
          f"**{len(runs)}** {ui.noun(len(runs))} recorded" if runs else f"No {ui.noun(2)} yet", bool(runs)),
-        ("2 · Official documents", ":material/menu_book:", "references",
-         f"**{len(docs)}** document{'s' if len(docs) != 1 else ''} setting the hard limits" if docs
-         else "None yet — guidelines will be unchecked", bool(docs)),
-        ("3 · Guidelines", ":material/checklist:", "guidelines",
+        ("2 · Guidelines", ":material/checklist:", "guidelines",
          f"**Version {doc.version}** · {len(doc.steps)} steps · {doc.status}" if doc
          else f"Created automatically from the first {ui.noun()}", doc is not None),
+        ("Official documents (the rules)", ":material/menu_book:", "references",
+         f"**{len(docs)}** document{'s' if len(docs) != 1 else ''} setting the hard limits" if docs
+         else "None yet — guidelines will be unchecked", bool(docs)),
     ]
     for col, (title, icon, page, text, done) in zip(cols, cards):
         with col.container(border=True, height="stretch"):

@@ -41,15 +41,19 @@ def _check(x: float, step: Step, exact: set[float]) -> str | None:
     """None if supported; otherwise the reason it is not."""
     if any(abs(abs(x) - e) < 1e-9 for e in exact):
         return None
+    # A number can match facts of different signals (5.1 m reversed and a 5 km/h speed limit):
+    # it is supported if any fact it matches is within that fact's own limits.
+    past = None
     for f in step.facts.values():
         if matching_part(x, f) is None:
             continue
         if f.limit_max is not None and x > f.limit_max + 1e-9:
-            return f"{x:g} is past the hard limit (max {f.limit_max:g})"
-        if f.limit_min is not None and x < f.limit_min - 1e-9:
-            return f"{x:g} is past the hard limit (min {f.limit_min:g})"
-        return None
-    return f"{x:g} is not supported by the telemetry for this step"
+            past = past or f"{x:g} is past the hard limit (max {f.limit_max:g})"
+        elif f.limit_min is not None and x < f.limit_min - 1e-9:
+            past = past or f"{x:g} is past the hard limit (min {f.limit_min:g})"
+        else:
+            return None
+    return past or f"{x:g} is not supported by the telemetry for this step"
 
 
 def verify_step(step: Step, profile: Profile) -> Verdict:

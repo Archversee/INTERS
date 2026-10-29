@@ -25,7 +25,7 @@ from sim2sop.learn.consensus import ConsensusItem, build_consensus, confidence, 
 from sim2sop.learn.limits import applicable, clip_facts, event_violations, relevant
 from sim2sop.profiles import Profile
 from sim2sop.rag.index import ReferenceIndex
-from sim2sop.schema import Flag, Guidelines, Limit, Requirement, Step
+from sim2sop.schema import Flag, Guidelines, Limit, Requirement, Step, callout
 from sim2sop.storage import RunRecord
 
 MERGE_WINDOW_S = 1.0
@@ -112,6 +112,7 @@ def plan(runs: list[RunRecord], profile: Profile, refs: ReferenceIndex,
     required = {r.key: r for r in requirements}
     flags: list[Flag] = []
     steps: list[Step] = []
+    tied: dict[str, set[str]] = {}   # step id -> callouts as common as the one chosen
 
     for k, group in enumerate(_groups([it for it, _ in ordered])):
         head = group[0]
@@ -136,7 +137,9 @@ def plan(runs: list[RunRecord], profile: Profile, refs: ReferenceIndex,
         clipped = clip_facts(facts, lims)
         label = "; ".join(_label(it, item_facts(it, profile, exclude) if it is not head else facts)
                           for it in group)
-        intent = next((it.intent for it in group if it.intent), None)
+        spoken = next((it for it in group if it.intent), None)
+        intent = spoken.intent if spoken else None
+        tied[sid] = spoken.top_intents if spoken else set()
         req = next((required[it.key] for it in group if it.key in required), None)
         used_runs = sorted(r for r in head.events if r not in exclude)
         step = Step(
@@ -187,6 +190,8 @@ def plan(runs: list[RunRecord], profile: Profile, refs: ReferenceIndex,
                                                        "review": None, "moved_from": None}))
                 continue
             kept.append(s)
+            if old is not None and callout(old.intent) in tied[s.id]:
+                s.intent = callout(old.intent)   # an equally common callout: keep the one already shown
             if old is None or _signature(s, profile) != _signature(old, profile):
                 dirty.append(s.id)
                 continue

@@ -197,6 +197,12 @@ class Citation(BaseModel):
     score: float = 0.0
 
 
+def callout(text: str | None) -> str | None:
+    """An instructor's callout without the quotes a guideline puts round it (a step's `intent`
+    holds the callout when planned, and the written text, e.g. '"Rotating"', after writing)."""
+    return text.strip().strip('"').strip() or None if text else text
+
+
 class Step(BaseModel):
     """Guideline template: when (trigger) -> what to do -> why (annotation)
     -> typical range (from runs) -> hard limit (from the reference SOP)."""

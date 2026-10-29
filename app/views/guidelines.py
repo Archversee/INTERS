@@ -21,7 +21,8 @@ def details(step_id: str, version: int) -> None:
     doc = store.load(prof.procedure, version)
     s = next(x for x in doc.steps if x.id == step_id)
     st.markdown(f"### {s.action}")
-    st.markdown(ui.step_badges(s, show_change=doc.parent_version is not None))
+    st.markdown(ui.step_badges(s, show_change=doc.parent_version is not None,
+                               old=ui.previous_steps(doc).get(s.id)))
     ui.step_chart(s, doc, prof)
 
     c1, c2 = st.columns(2)
@@ -106,9 +107,11 @@ def render() -> None:
                                 label_visibility="collapsed") or "Checklist"
     phases = [p for p in doc.phases if doc.steps_in(p)]
     show_change = doc.parent_version is not None   # on a first version every step is new
+    before = ui.previous_steps(doc)
     if view == "Checklist":
         st.caption("One line per step: **what to do** — when to do it · :red-badge[hard limit] from the official "
-                   "documents. Switch to *Full detail* for typical ranges, the instructor's reason, charts and edits.")
+                   "documents · :violet-badge[Changed: Typical] what changed since the previous version. Switch to "
+                   "*Full detail* for typical ranges, the instructor's reason, charts and edits.")
         n = 0
         for phase in phases:
             with st.container(border=True):
@@ -116,7 +119,7 @@ def render() -> None:
                 lines = []
                 for s in doc.steps_in(phase):
                     n += 1
-                    lines.append(ui.checklist_line(n, s, prof, show_change))
+                    lines.append(ui.checklist_line(n, s, prof, show_change, before.get(s.id)))
                 st.markdown("\n".join(lines))
     else:
         with st.expander("How to read a guideline", icon=":material/help:"):
@@ -137,7 +140,7 @@ def render() -> None:
                 with st.container(border=True):
                     head, btn = st.columns([5, 1])
                     head.markdown(f"**{n}. {s.action}**")
-                    head.markdown(ui.step_badges(s, show_change))
+                    head.markdown(ui.step_badges(s, show_change, before.get(s.id)))
                     if btn.button("Details", key=f"d-{v}-{s.id}", icon=":material/open_in_full:", width="stretch"):
                         details(s.id, v)
                     ui.guideline_body(s, doc)

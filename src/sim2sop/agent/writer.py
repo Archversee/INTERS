@@ -19,7 +19,7 @@ from sim2sop.agent.verifier import facts_table
 from sim2sop.learn import memory
 from sim2sop.profiles import Profile
 from sim2sop.rag.index import ReferenceIndex
-from sim2sop.schema import Step
+from sim2sop.schema import Step, callout
 
 FIELDS = ("trigger", "action", "intent", "typical", "limit")
 EDITABLE = ("trigger", "action", "typical")   # fields learned patterns may rewrite
@@ -78,7 +78,7 @@ class TemplateWriter:
         out = {
             "trigger": trigger,
             "action": f"{step.label}.",
-            "intent": f'"{step.intent}"' if step.intent else None,
+            "intent": f'"{callout(step.intent)}"' if callout(step.intent) else None,   # quoted once, even on a retry
             "typical": typical,
             "limit": limit_text(step),
         }
@@ -161,7 +161,7 @@ class LLMWriter:
             "phase": step.phase,
             "step_label": step.label,
             "event_kind": step.kind,
-            "instructor_callout": step.intent,
+            "instructor_callout": callout(step.intent),
             "core_guideline": step.mandatory,
             "required_by": step.required_by,
             "seen_in_runs": f"{step.seen_in}/{step.run_count}",
