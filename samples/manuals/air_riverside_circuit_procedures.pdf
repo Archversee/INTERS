@@ -1,0 +1,65 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [6 0 R 8 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 828 >>
+stream
+BT /F2 18 Tf 60 790 Td (RIVERSIDE AERO CLUB) Tj ET
+BT /F1 9 Tf 60 760 Td (Fictional organisation - sample document for demonstration only.) Tj ET
+BT /F2 13 Tf 60 734 Td (Cessna 172 Circuit Procedures, Issue 2) Tj ET
+BT /F2 13 Tf 60 700 Td (1. Before take-off) Tj ET
+BT /F1 11 Tf 60 674 Td (Complete the before take-off checks at the holding point.) Tj ET
+BT /F1 11 Tf 60 655 Td (The strobe and the landing light must be ON before entering the runway.) Tj ET
+BT /F1 11 Tf 60 636 Td (Rotate at about 55 KIAS and climb at 70 to 80 KIAS.) Tj ET
+BT /F2 13 Tf 60 609 Td (2. Climb and crosswind) Tj ET
+BT /F1 11 Tf 60 583 Td (Do not turn crosswind below 500 ft AGL.) Tj ET
+BT /F2 13 Tf 60 556 Td (3. Circuit height) Tj ET
+BT /F1 11 Tf 60 530 Td (Circuits are flown at 1,000 ft AGL. Never exceed 1,100 ft AGL on the downwind leg.) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 5 0 R >>
+endobj
+7 0 obj
+<< /Length 593 >>
+stream
+BT /F2 13 Tf 60 782 Td (4. Flaps) Tj ET
+BT /F1 11 Tf 60 756 Td (Do not select flaps beyond 10 degrees above 85 KIAS.) Tj ET
+BT /F1 11 Tf 60 737 Td (The maximum speed with 10 degrees of flap is 110 KIAS.) Tj ET
+BT /F2 13 Tf 60 710 Td (5. Airspeed limits) Tj ET
+BT /F1 11 Tf 60 684 Td (Never exceed 163 KIAS.) Tj ET
+BT /F2 13 Tf 60 657 Td (6. After landing) Tj ET
+BT /F1 11 Tf 60 631 Td (Retract the flaps once clear of the runway.) Tj ET
+BT /F1 11 Tf 60 612 Td (Set the parking brake before shutdown.) Tj ET
+BT /F1 11 Tf 60 593 Td (Taxi slowly and keep a good lookout for other aircraft.) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 7 0 R >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000218 00000 n 
+0000000320 00000 n 
+0000001199 00000 n 
+0000001335 00000 n 
+0000001979 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+2115
+%%EOF

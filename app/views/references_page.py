@@ -139,10 +139,15 @@ def _ai_manual(prof) -> None:
             path.write_bytes(up.getvalue())
             with st.status(f"Reading {up.name}", expanded=True) as status:
                 bar = st.progress(0.0, text="Finding the sections that state a rule…")
-                reading = manuals.read_manual(
-                    ui.llm(), path, prof, title=title.strip(),
-                    progress=lambda i, total, msg: bar.progress(min(1.0, (i + 1) / max(total, 1)),
-                                                                text=f"{msg}  ({i + 1} of {total})"))
+                try:
+                    reading = manuals.read_manual(
+                        ui.llm(), path, prof, title=title.strip(),
+                        progress=lambda i, total, msg: bar.progress(min(1.0, (i + 1) / max(total, 1)),
+                                                                    text=f"{msg}  ({i + 1} of {total})"))
+                except Exception as e:   # an unreadable file should not crash the page
+                    status.update(label=f"Could not read {up.name}", state="error")
+                    st.error(str(e), icon=":material/error:")
+                    return
                 status.update(label=f"Read {up.name}", state="complete", expanded=False)
             ss["manual"] = {"path": str(path), "title": title.strip(), "kind": kind,
                             "revision": rev.strip() or None, "reading": reading}
@@ -171,7 +176,7 @@ def _manual_review(prof, m: dict) -> None:
             suspect += every
             rows.append({"Use": not every, "Rule": rule, "Applies": applies, "The manual says": p.quote,
                          f"Recorded {ui.noun(2)} breaking it": "—" if breaks is None else
-                         f"{breaks[0]} of {breaks[1]}" + (" — check the signal" if every else ""),
+                         f"{breaks[0]} of {breaks[1]}" + (" — check it" if every else ""),
                          "Section": p.section})
         edited = st.data_editor(pd.DataFrame(rows), hide_index=True, width="stretch",
                                 key=f"manual-pick-{ss['manual_n']}",
@@ -180,8 +185,8 @@ def _manual_review(prof, m: dict) -> None:
         chosen = [p for p, use in zip(ok, edited["Use"]) if use]
         if suspect:
             st.caption(f":material/warning: Every recorded {ui.noun()} would break {suspect} of these, so they "
-                       "are unticked: the AI most likely picked the wrong signal (e.g. steering angle for angle "
-                       "to the kerb). Tick one only if the rule really is that strict.")
+                       "are unticked: the AI most likely picked the wrong signal (steering angle for angle to the "
+                       "kerb) or turned a maximum into a minimum. Tick one only if the rule really is that strict.")
     else:
         st.info("No rule passed the checks. The manual can still be added for citations.", icon=":material/info:")
     if aside:

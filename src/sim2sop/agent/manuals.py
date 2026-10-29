@@ -35,6 +35,12 @@ SECTION_CHARS = 2400       # longer sections are split
 RULE_WORDS = re.compile(r"\b(must|never|do not|don't|shall|not exceed|maximum|minimum|max|min|limit|"
                         r"required|always|before|at least|no more than|no faster|no slower|below|above)\b", re.I)
 NUM_RE = re.compile(r"(?<![A-Za-z0-9])-?\d+(?:\.\d+)?")
+THOUSANDS_RE = re.compile(r"(?<=\d),(?=\d{3}\b)")
+HEDGE_RE = re.compile(r"\b(about|approximately|around|roughly|normally|usually|typically|should|ideally)\b", re.I)
+NEG = r"\b(do not|don't|never|must not|may not|shall not)\b"
+MAX_RE = re.compile(r"\b(maximum|max|at most|no more than|no faster than|no higher than|exceed|up to)\b")
+MIN_RE = re.compile(r"\b(minimum|min|at least|no less than|no slower than|no lower than)\b")
+ACRONYM_RE = re.compile(r"\b[A-Z]{2,}\b")   # "AGL", "MSL" in signal labels
 
 SYSTEM_PROMPT = """You read one section of an official training manual and list the HARD RULES it states.
 Only rules the text states explicitly; never infer, convert units or round.
@@ -42,8 +48,21 @@ Only rules the text states explicitly; never infer, convert units or round.
 - A limit bounds one measurable signal from the SIGNALS list: {"signal", "min" or "max" (a number written in the
   quote, in the signal's unit), "when" (optional condition using SIGNALS, e.g. "flaps_idx >= 2"), "phases"
   (optional, from PHASES), "text" (the rule in a short sentence), "quote" (the exact words from the section)}.
+  - "max": the value must stay at or below it ("not exceed", "no more than", "never above").
+    "min": the value must stay at or above it ("at least", "never below").
+  - One limit per rule: never merge two sentences into one limit.
+  - A phase goes in "phases", never in "when". "when" only compares SIGNALS with numbers.
+  - Pick the signal whose description matches the words exactly (ft AGL is height AGL, not altitude MSL).
 - A required action is one of ACTIONS that the text says must be done: {"key", "text", "quote"}.
-- Skip anything that does not map onto SIGNALS or ACTIONS, and advice ("should", "normally").
+  A switch that must be ON or OFF is a required action, not a limit.
+- Skip advice and values given as a guide ("should", "normally", "about", "approximately"), and anything that
+  does not map onto SIGNALS or ACTIONS.
+
+Example. Section: "Never drive faster than 30 km/h in the yard. Keep about 2 m from walls. Lights must be on."
+-> {"limits": [{"signal": "speed_kmh", "max": 30, "phases": ["yard"], "text": "No faster than 30 km/h in the yard",
+   "quote": "Never drive faster than 30 km/h in the yard"}],
+   "requirements": [{"key": "toggle:lights:1", "text": "Lights on", "quote": "Lights must be on"}]}
+
 Reply with one JSON object: {"limits": [...], "requirements": [...]} (empty lists if none)."""
 
 
@@ -100,19 +119,28 @@ def read_sections(path: Path) -> list[tuple[str, str]]:
     """(section, text) pairs: Markdown headings, PDF pages, or paragraphs of plain text."""
     path = Path(path)
     if path.suffix.lower() == ".pdf":
-        from pypdf import PdfReader
+        try:
+            from pypdf import PdfReader
+        except ImportError:
+            raise RuntimeError('Reading a PDF needs pypdf: pip install -e ".[rag]"') from None
         raw = [(f"p.{i + 1}", page.extract_text() or "") for i, page in enumerate(PdfReader(str(path)).pages)]
     else:
         _, body = references.split_front_matter(path.read_text(encoding="utf-8", errors="replace"))
+        lines = body.splitlines()
+        markdown = any(line.startswith("#") for line in lines)
         raw, title, buf = [], "Text", []
-        for line in body.splitlines():
-            if line.startswith("#"):
-                if buf:
+        for i, line in enumerate(lines):
+            # Plain text has no "#": a short line after a blank one, followed by text, is a heading.
+            plain_heading = (not markdown and line.strip() and (i == 0 or not lines[i - 1].strip())
+                             and len(line.strip()) <= 60 and not line.strip().endswith((".", ",", ";"))
+                             and i + 1 < len(lines) and lines[i + 1].strip())
+            if line.startswith("#") or plain_heading:
+                if any(x.strip() for x in buf):
                     raw.append((title, "\n".join(buf)))
                 title, buf = line.lstrip("#").strip() or title, []
             elif not line.startswith(">"):   # ">" lines are editor notes in the samples
                 buf.append(line)
-        if buf:
+        if any(x.strip() for x in buf):
             raw.append((title, "\n".join(buf)))
     out = []
     for title, text in raw:
@@ -139,10 +167,18 @@ def actions(profile: Profile) -> dict[str, str]:
             for sig, spec in profile.events.toggles.items() for state, label in spec.states.items()}
 
 
+def _describe(profile: Profile, signal: str) -> str:
+    """"airspeed (kt)", or for a switch its values: "flaps (0 = UP, 1 = 10°, 2 = 20°, 3 = 30°)"."""
+    spec, toggle = profile.signals[signal], profile.events.toggles.get(signal)
+    if toggle and toggle.states:
+        return f"{profile.label(signal)} ({', '.join(f'{v} = {n}' for v, n in toggle.states.items())})"
+    return profile.label(signal) + (f" ({spec.unit})" if spec.unit else "")
+
+
 def vocabulary(profile: Profile) -> dict:
     return {
-        "SIGNALS": {s: f"{profile.label(s)}" + (f" ({spec.unit})" if spec.unit else "")
-                    for s, spec in profile.signals.items() if spec.category.value != "environment"},
+        "SIGNALS": {s: _describe(profile, s) for s, spec in profile.signals.items()
+                    if spec.category.value != "environment"},
         "PHASES": profile.phase_names,
         "ACTIONS": actions(profile),
     }
@@ -159,19 +195,91 @@ def _when_ok(expr: str, profile: Profile) -> bool:
     return np.asarray(out).dtype == bool
 
 
+def directions(quote: str) -> set[str]:
+    """Which bounds the wording sets: "max" ("not exceed", "never above"), "min" ("at least",
+    "never below"), both ("within"). Empty when the wording does not say."""
+    q, out = quote.lower(), set()
+    if MAX_RE.search(q) or re.search(NEG + r"[^.]*\b(above|over|beyond|faster|higher|more)\b", q):
+        out.add("max")
+    if MIN_RE.search(q) or re.search(NEG + r"[^.]*\b(below|under|lower|less|slower)\b", q):
+        out.add("min")
+    if re.search(r"\bwithin\b", q):
+        out |= {"min", "max"}
+    return out
+
+
+def _writes_unit(quote: str, unit: str | None) -> bool:
+    return bool(unit) and re.search(rf"\d\s*{re.escape(unit)}(?![A-Za-z])", quote or "") is not None
+
+
+def _named(phase: str, text: str) -> bool:
+    """Does the text name the phase? Word stems, so "while reversing" names reverse_in."""
+    words = re.findall(r"[a-z]+", text.lower())
+    return any(w.startswith(part[:5]) for part in phase.split("_") if len(part) >= 4 for w in words)
+
+
+def _repair(p: Proposal, profile: Profile) -> None:
+    """Fix what a small model gets wrong in a way the text settles:
+    - a phase written as a condition ("on the downwind leg") is moved to the phases;
+    - phases the quote does not name are dropped (the rule then applies everywhere, as written);
+    - a signal whose label contradicts the quote's acronym ("ft AGL" on altitude MSL) becomes the
+      signal the acronym names, when it has the same unit."""
+    if p.kind != "limit":
+        return
+    if p.when:
+        p.when = re.sub(r"(?<![<>=!])=(?!=)", "==", p.when)   # "flaps_idx = 1" -> "flaps_idx == 1"
+    if p.when and not _when_ok(p.when, profile):
+        named = [ph for ph in profile.phase_names if ph.replace("_", " ") in p.when.lower()]
+        if len(named) == 1:
+            p.phases, p.when = sorted(set(p.phases or []) | set(named)), None
+    if p.phases:
+        p.phases = [ph for ph in p.phases if _named(ph, p.quote)] or None
+    if p.signal in profile.signals:
+        said = set(ACRONYM_RE.findall(p.quote or "")) & {a for s in profile.signals
+                                                        for a in ACRONYM_RE.findall(profile.label(s))}
+        if said and not said & set(ACRONYM_RE.findall(profile.label(p.signal))):
+            # Same unit as proposed, or the unit the quote writes after a number ("1,100 ft AGL").
+            match = [s for s in profile.signals if said & set(ACRONYM_RE.findall(profile.label(s)))
+                     and (profile.unit(s) == profile.unit(p.signal) or _writes_unit(p.quote, profile.unit(s)))]
+            if len(match) == 1:
+                p.signal = match[0]
+
+
 def check(p: Proposal, profile: Profile, manual_text: str) -> Proposal:
+    _repair(p, profile)
     problems = []
     if not p.quote or _norm(p.quote) not in _norm(manual_text):
         problems.append("the quote is not in the manual")
+    if (hedge := HEDGE_RE.search(p.quote or "")) is not None:
+        problems.append(f'the manual gives this as a guide ("{hedge.group()}"), not a hard rule')
     if p.kind == "limit":
         if p.signal not in profile.signals:
             problems.append(f"unknown signal {p.signal!r}")
         if p.min is None and p.max is None:
             problems.append("no min or max")
-        quoted = {abs(float(x)) for x in NUM_RE.findall(p.quote or "")}
+        quoted = {abs(float(x)) for x in NUM_RE.findall(THOUSANDS_RE.sub("", p.quote or ""))}   # "1,100 ft"
+        # A switch position counts as written when its name is ("10 degrees" of flap = position 1).
+        toggle = profile.events.toggles.get(p.signal or "")
+        quoted |= {float(v) for v, name in (toggle.states.items() if toggle else ())
+                   if any(abs(float(x)) in quoted for x in NUM_RE.findall(name))}
+        said = directions(p.quote or "")
         for name, v in (("min", p.min), ("max", p.max)):
-            if v is not None and abs(v) not in quoted:
+            if v is None:
+                continue
+            if abs(v) not in quoted:
                 problems.append(f"{name} {v:g} is not written in the quote")
+            # A negative bound flips the wording: "descent not more than 800 fpm" = vertical speed min -800.
+            bound = name if v >= 0 else {"min": "max", "max": "min"}[name]
+            if said and bound not in said:
+                problems.append(f"the quote sets no {'minimum' if bound == 'min' else 'maximum'} "
+                                f"({name} {v:g} proposed)")
+        if p.signal in profile.signals:
+            mine = set(ACRONYM_RE.findall(profile.label(p.signal)))
+            for other in profile.signals:
+                for word in set(ACRONYM_RE.findall(profile.label(other))) - mine:
+                    if re.search(rf"\b{word}\b", p.quote or ""):
+                        problems.append(f'the quote says "{word}", which is {profile.label(other)}, '
+                                        f"not {profile.label(p.signal)}")
         if p.when and not _when_ok(p.when, profile):
             problems.append(f"condition {p.when!r} does not use the procedure's signals")
         bad = [ph for ph in p.phases or [] if ph not in profile.phase_names]
@@ -189,7 +297,7 @@ def _num(v) -> float | None:
     """A number, also when written with its unit ("5 km/h")."""
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         return float(v)
-    m = NUM_RE.search(str(v)) if v not in (None, "") else None
+    m = NUM_RE.search(THOUSANDS_RE.sub("", str(v))) if v not in (None, "") else None
     return float(m.group()) if m else None
 
 

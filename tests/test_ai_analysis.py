@@ -113,3 +113,37 @@ def test_findings_may_state_a_gap_but_not_overclaim_one_run():
     assert gap.problems == []
     often = insights.check(insights.Finding(headline="Instructor 1 often breaks it.", patterns=["P2"]), by_id)
     assert often.problems == ['says "often" but the patterns it cites rest on one run']
+
+
+def test_checks_and_repairs_catch_a_small_models_usual_mistakes():
+    air, land = load_profile("air_c172_circuit"), load_profile("land_parallel_park")
+    text = "Circuits are flown at 1,000 ft AGL. Never exceed 1,100 ft AGL on the downwind leg. Never exceed 163 KIAS."
+
+    def c(prof, manual, **kw):
+        return manuals.check(manuals.Proposal(kind="limit", **kw), prof, manual)
+
+    # "ft AGL" on altitude MSL (same unit) becomes height AGL; a phase in `when` moves to phases
+    p = c(air, text, signal="alt_ft", max=1100, when="on the downwind leg",
+          quote="Never exceed 1,100 ft AGL on the downwind leg")
+    assert (p.signal, p.max, p.when, p.phases, p.problems) == ("agl_ft", 1100.0, None, ["downwind"], [])
+    # ...also from another unit when the quote writes the target's unit ("ft"); without it, set aside
+    assert c(air, text, signal="vs_fpm", max=1100, quote="Never exceed 1,100 ft AGL").signal == "agl_ft"
+    bare = "Never exceed 1,100 AGL."
+    assert c(air, bare, signal="vs_fpm", max=1100, quote="Never exceed 1,100 AGL").problems
+    # a flap position is written by its name, and "=" in a condition means "=="
+    flaps = "Do not select flaps beyond 10 degrees above 85 KIAS. The maximum speed with 10 degrees of flap is 110 KIAS."
+    assert c(air, flaps, signal="flaps_idx", max=1, when="ias_kt > 85",
+             quote="Do not select flaps beyond 10 degrees above 85 KIAS").problems == []
+    assert c(air, flaps, signal="ias_kt", max=110, when="flaps_idx = 1",
+             quote="The maximum speed with 10 degrees of flap is 110 KIAS").when == "flaps_idx == 1"
+    # phases the quote does not name are dropped
+    assert c(air, text, signal="ias_kt", max=163, phases=["climb"], quote="Never exceed 163 KIAS").phases is None
+    # "no more than" is a maximum; a minimum is set aside
+    manual = "Approach the parked car at no more than 20 km/h. Straighten at about 45 degrees."
+    assert c(land, manual, signal="speed_kmh", min=20, quote="no more than 20 km/h").problems == [
+        "the quote sets no minimum (min 20 proposed)"]
+    # a value given as a guide is not a hard rule
+    assert "a guide" in c(land, manual, signal="kerb_angle_deg", max=45, quote="Straighten at about 45 degrees").problems[0]
+    # a descent rate flips the sign: "must not exceed 800 fpm" descent = vertical speed min -800
+    assert c(air, "The rate of descent must not exceed 800 fpm.", signal="vs_fpm", min=-800,
+             quote="The rate of descent must not exceed 800 fpm").problems == []
