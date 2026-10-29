@@ -24,10 +24,11 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from sim2sop import references
+from sim2sop import references, storage
 from sim2sop.agent.llm import LLMClient, LLMError, LLMUnreachable, parse_json
 from sim2sop.profiles import Profile
-from sim2sop.schema import RefDoc
+from sim2sop.schema import Limit, RefDoc
+from sim2sop.signals.compliance import check_run
 
 MAX_SECTIONS = 24          # model calls per manual
 SECTION_CHARS = 2400       # longer sections are split
@@ -266,6 +267,18 @@ def _dedupe_and_name(reading: ManualReading) -> None:
         what = p.signal or (p.key or "").replace(":", "_")
         p.id = f"ai_{p.kind}_{n:02d}_{re.sub(r'[^a-z0-9_]', '', what.lower())}"
     reading.proposals = kept
+
+
+def recorded_breaks(p: Proposal, procedure: str, profile: Profile) -> tuple[int, int] | None:
+    """(runs that would break a proposed limit, recorded runs). The checks above cannot tell
+    "angle to the kerb" from "steering angle"; the data can: a limit that every recorded run
+    breaks usually names the wrong signal."""
+    runs = storage.list_runs(procedure)
+    if p.kind != "limit" or not p.ok or not runs:
+        return None
+    lim = Limit(**p.as_rule())
+    broken = sum(bool(check_run(storage.load_telemetry(procedure, r.run_id), r, [lim], profile)) for r in runs)
+    return broken, len(runs)
 
 
 def add_manual(procedure: str, path: Path, title: str, kind: str, revision: str | None,

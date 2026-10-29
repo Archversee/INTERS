@@ -23,6 +23,9 @@ from sim2sop.storage import RunRecord
 
 NUM_RE = re.compile(r"(?<![A-Za-z0-9])-?\d+(?:\.\d+)?")
 MAX_FINDINGS = 5
+# Words that claim a repeated behaviour: wrong when every cited pattern rests on one run.
+OFTEN_RE = re.compile(r"\b(frequently|often|several|many|repeatedly|regularly|consistently|always|usually|"
+                      r"habitually|tends? to)\b", re.I)
 
 SYSTEM_PROMPT = """You help a chief instructor understand how their instructors differ, from PATTERNS found in
 simulator runs by statistics. Write up to 5 findings, most important first.
@@ -33,6 +36,10 @@ Rules:
 - "headline": the finding in one plain sentence. "detail": what it means for training, 1-2 sentences.
 - "action": one concrete thing the instructor team could do (brief instructors, add a note to the guideline,
   check a limit), or "" if none.
+- Say only what the patterns show. Never generalise: one run is "one run", one instructor is that instructor,
+  never "several" or "instructors" in general.
+- Never guess reasons or motives (no "misunderstanding", "preference", "lack of"); if the reason matters,
+  the action is to ask the instructor why.
 - Group related patterns into one finding; skip patterns that say nothing useful.
 Reply with one JSON object: {"findings": [{"headline", "detail", "action", "patterns": ["P1", ...]}]}"""
 
@@ -62,12 +69,17 @@ def check(f: Finding, by_id: dict[str, Pattern]) -> Finding:
     cited = [by_id[p] for p in f.patterns if p in by_id]
     if not cited:
         problems.append("cites no pattern")
-    allowed = {abs(float(n)) for p in cited for n in p.numbers}
+    allowed = {round(abs(float(n)), 3) for p in cited for n in p.numbers}
     # Numbers inside names count too ("Instructor 2", "Flaps 20°").
-    allowed |= {abs(float(x)) for p in cited for x in NUM_RE.findall(p.text)}
-    for x in NUM_RE.findall(f"{f.headline} {f.detail} {f.action}"):
-        if abs(float(x)) not in allowed:
+    allowed |= {round(abs(float(x)), 3) for p in cited for x in NUM_RE.findall(p.text)}
+    # So does the gap between two of a pattern's own numbers ("0.4 m closer": 9.0 vs 8.6).
+    allowed |= {round(abs(a - b), 3) for p in cited for a in p.numbers for b in p.numbers if a != b}
+    text = f"{f.headline} {f.detail} {f.action}"
+    for x in NUM_RE.findall(text):
+        if round(abs(float(x)), 3) not in allowed:
             problems.append(f"{x} is not in the patterns it cites")
+    if cited and all(len(p.runs) <= 1 for p in cited) and (word := OFTEN_RE.search(text)):
+        problems.append(f'says "{word.group()}" but the patterns it cites rest on one run')
     f.problems = problems
     return f
 

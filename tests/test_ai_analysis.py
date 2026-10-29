@@ -88,6 +88,12 @@ def test_ai_findings_must_use_the_patterns_numbers(data_dir, tmp_path):
     assert {pr for f in ai.set_aside for pr in f.problems} >= {"37 is not in the patterns it cites",
                                                                "unknown pattern P99"}
     insights.save(ai)
+
+    # A limit on the wrong signal shows in the data: every drive turns the wheel past 50°.
+    wrong = manuals.Proposal(kind="limit", signal="steer_deg", max=50, quote="50")
+    right = manuals.Proposal(kind="limit", signal="kerb_angle_deg", max=50, quote="50")
+    assert manuals.recorded_breaks(wrong, p.procedure, p) == (5, 5)
+    assert manuals.recorded_breaks(right, p.procedure, p) == (0, 5)
     assert insights.load(p.procedure).findings[0].patterns == [habit.id]
 
 
@@ -97,3 +103,13 @@ def test_loose_answers_from_a_small_model_map_to_the_profile():
                               "requirements": [{"key": "Handbrake APPLY"}]}, "s", p)
     assert [(x.signal, x.max, x.phases) for x in got if x.kind == "limit"] == [("speed_kmh", 5.0, ["reverse_in"])]
     assert [x.key for x in got if x.kind == "requirement"] == ["toggle:hand_brake:1"]
+
+
+def test_findings_may_state_a_gap_but_not_overclaim_one_run():
+    from sim2sop.learn.patterns import Pattern
+    by_id = {"P1": Pattern(id="P1", kind="instructor", text="x", numbers=[8.6, 9.0, 3, 2], runs=["a", "b"]),
+             "P2": Pattern(id="P2", kind="limit_break", text="1 of 5 runs break it", numbers=[1, 5], runs=["a"])}
+    gap = insights.check(insights.Finding(headline="Instructor 1 stops 0.4 m earlier.", patterns=["P1"]), by_id)
+    assert gap.problems == []
+    often = insights.check(insights.Finding(headline="Instructor 1 often breaks it.", patterns=["P2"]), by_id)
+    assert often.problems == ['says "often" but the patterns it cites rest on one run']

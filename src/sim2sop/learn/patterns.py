@@ -174,18 +174,23 @@ def find_patterns(doc: Guidelines, runs: list[RunRecord], profile: Profile, top:
                           f"({len(a)} and {len(b)} runs)."),
                     numbers=[_num(profile, sig, median(a)), _num(profile, sig, median(b)), len(a), len(b)]))
 
-    # limit_break: who breaks which rule
+    # limit_break: who breaks which rule; rules broken by the same runs are one finding
     broke: dict[str, set[str]] = defaultdict(set)
     for f in doc.flags:
         if f.kind == "limit_violation" and f.run_id and "'" in f.message:
             broke[f.message.split("'")[1]].add(f.run_id)
+    same_runs: dict[frozenset, list[str]] = defaultdict(list)
     for rule, rids in broke.items():
-        names = sorted({who.get(r) or r for r in rids})
+        same_runs[frozenset(rids)].append(rule)
+    for rids, rules in same_runs.items():
+        names = ", ".join(sorted({who.get(r) or r for r in rids}))
+        what = (f"break \"{rules[0]}\"" if len(rules) == 1 else
+                f"break {len(rules)} rules: " + "; ".join(f'"{r}"' for r in rules))
         found.append(Pattern(
             id="", kind="limit_break", runs=sorted(rids), strength=5.0,
-            text=(f"{len(rids)} of {len(runs)} runs break \"{rule}\" ({', '.join(names)}); they are left out of "
-                  "the typical ranges."),
-            numbers=[len(rids), len(runs)]))
+            text=(f"{len(rids)} of {len(runs)} runs {what} — all by {names}; those runs are left out of the "
+                  "typical ranges."),
+            numbers=[len(rids), len(runs)] + ([len(rules)] if len(rules) > 1 else [])))
 
     # spread: where instructors agree least (typical range against the profile's tolerance)
     spreads = []

@@ -163,16 +163,25 @@ def _manual_review(prof, m: dict) -> None:
                    "The rules found so far are below.", icon=":material/warning:")
     chosen = []
     if ok:
-        rows = []
+        rows, suspect = [], 0
         for p in ok:
             rule, applies = _rule_words(prof, p)
-            rows.append({"Use": True, "Rule": rule, "Applies": applies, "The manual says": p.quote,
+            breaks = manuals.recorded_breaks(p, prof.procedure, prof)
+            every = breaks is not None and breaks[0] == breaks[1] >= 2
+            suspect += every
+            rows.append({"Use": not every, "Rule": rule, "Applies": applies, "The manual says": p.quote,
+                         f"Recorded {ui.noun(2)} breaking it": "—" if breaks is None else
+                         f"{breaks[0]} of {breaks[1]}" + (" — check the signal" if every else ""),
                          "Section": p.section})
         edited = st.data_editor(pd.DataFrame(rows), hide_index=True, width="stretch",
                                 key=f"manual-pick-{ss['manual_n']}",
                                 column_config={"Use": st.column_config.CheckboxColumn(width="small")},
-                                disabled=["Rule", "Applies", "The manual says", "Section"])
+                                disabled=[c for c in rows[0] if c != "Use"])
         chosen = [p for p, use in zip(ok, edited["Use"]) if use]
+        if suspect:
+            st.caption(f":material/warning: Every recorded {ui.noun()} would break {suspect} of these, so they "
+                       "are unticked: the AI most likely picked the wrong signal (e.g. steering angle for angle "
+                       "to the kerb). Tick one only if the rule really is that strict.")
     else:
         st.info("No rule passed the checks. The manual can still be added for citations.", icon=":material/info:")
     if aside:
