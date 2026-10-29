@@ -1,11 +1,10 @@
 import json
 
-from sim2sop import config, references, storage
-from sim2sop.agent import insights, manuals
-from sim2sop.agent.llm import LLMClient, LLMReply, NoLLM
+from sim2sop import references
+from sim2sop.agent import manuals
+from sim2sop.agent.llm import LLMClient, LLMReply
 from sim2sop.generate.land import generate_land_runs
 from sim2sop.ingest import ingest_run
-from sim2sop.pipeline import create_guidelines
 from sim2sop.profiles import load_profile
 
 MANUAL = """# Parallel parking manual
@@ -63,38 +62,16 @@ def test_manual_rules_are_checked_against_the_text_and_the_profile(data_dir, tmp
     assert [r.key for r in references.active_requirements(p.procedure)] == ["toggle:hand_brake:1"]
 
 
-def test_ai_findings_must_use_the_patterns_numbers(data_dir, tmp_path):
+def test_recorded_runs_show_a_limit_on_the_wrong_signal(data_dir, tmp_path):
+    """The text checks cannot tell "angle to the kerb" from "steering angle"; the data can:
+    every drive turns the wheel past 50°, none swings 50° to the kerb."""
     p = load_profile("land_parallel_park")
-    references.sync_builtin(p.procedure, config.REFERENCES_DIR / "land")
     for run in generate_land_runs(tmp_path, n=5):
         ingest_run(run, p)
-    doc = create_guidelines(p, NoLLM("template"))
-    runs = storage.list_runs(p.procedure)
-
-    plain = insights.explain(doc, runs, p, NoLLM("template"))
-    assert plain.patterns and plain.findings and plain.writer == "template"
-    habit = next(x for x in plain.patterns if x.kind == "habit")   # the forward shuffle is instructor 2's
-    assert "Instructor 2" in habit.text
-
-    llm = ScriptedLLM({"findings": [
-        {"headline": "Only Instructor 2 shuffles forward at the end, in 2 of 2 runs.", "detail": "",
-         "action": "Brief the team.", "patterns": [habit.id]},
-        {"headline": "Instructor 2 parks 37% better.", "patterns": [habit.id]},
-        {"headline": "Something else.", "patterns": ["P99"]},
-    ]})
-    ai = insights.explain(doc, runs, p, llm)
-    assert ai.writer == "fake:scripted" and [f.headline for f in ai.findings] == [
-        "Only Instructor 2 shuffles forward at the end, in 2 of 2 runs."]
-    assert {pr for f in ai.set_aside for pr in f.problems} >= {"37 is not in the patterns it cites",
-                                                               "unknown pattern P99"}
-    insights.save(ai)
-
-    # A limit on the wrong signal shows in the data: every drive turns the wheel past 50°.
     wrong = manuals.Proposal(kind="limit", signal="steer_deg", max=50, quote="50")
     right = manuals.Proposal(kind="limit", signal="kerb_angle_deg", max=50, quote="50")
     assert manuals.recorded_breaks(wrong, p.procedure, p) == (5, 5)
     assert manuals.recorded_breaks(right, p.procedure, p) == (0, 5)
-    assert insights.load(p.procedure).findings[0].patterns == [habit.id]
 
 
 def test_loose_answers_from_a_small_model_map_to_the_profile():
@@ -104,15 +81,6 @@ def test_loose_answers_from_a_small_model_map_to_the_profile():
     assert [(x.signal, x.max, x.phases) for x in got if x.kind == "limit"] == [("speed_kmh", 5.0, ["reverse_in"])]
     assert [x.key for x in got if x.kind == "requirement"] == ["toggle:hand_brake:1"]
 
-
-def test_findings_may_state_a_gap_but_not_overclaim_one_run():
-    from sim2sop.learn.patterns import Pattern
-    by_id = {"P1": Pattern(id="P1", kind="instructor", text="x", numbers=[8.6, 9.0, 3, 2], runs=["a", "b"]),
-             "P2": Pattern(id="P2", kind="limit_break", text="1 of 5 runs break it", numbers=[1, 5], runs=["a"])}
-    gap = insights.check(insights.Finding(headline="Instructor 1 stops 0.4 m earlier.", patterns=["P1"]), by_id)
-    assert gap.problems == []
-    often = insights.check(insights.Finding(headline="Instructor 1 often breaks it.", patterns=["P2"]), by_id)
-    assert often.problems == ['says "often" but the patterns it cites rest on one run']
 
 
 def test_checks_and_repairs_catch_a_small_models_usual_mistakes():

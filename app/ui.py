@@ -183,7 +183,6 @@ def reset_all(prof: Profile) -> None:
     shutil.rmtree(config.MEMORY_DIR, ignore_errors=True)
     shutil.rmtree(generated_dir(prof), ignore_errors=True)
     shutil.rmtree(sample_dir(prof), ignore_errors=True)
-    (config.DATA_DIR / "insights" / f"{prof.procedure}.json").unlink(missing_ok=True)
     shutil.rmtree(config.DATA_DIR / "uploads" / prof.procedure, ignore_errors=True)
     telemetry.clear()
     for k in ("review_queue", "gen_current", "manual"):

@@ -34,9 +34,8 @@ pytest
 |---|---|---|
 | Writing guidelines | Words each step (when, what, why, typical) from the step's verified numbers | The verifier: every number must match the data and sit inside the limits, else up to 2 rewrites; limit text is quoted, never AI-written |
 | Official documents → *Read a manual with AI* | Reads a manual with no limits list and proposes hard limits and required actions in the procedure's signals | The quote must be in the manual word for word, the value must be written in the quote, the signal / phases / condition / action must exist in the profile; an instructor ticks what goes in force ([manuals.py](src/sim2sop/agent/manuals.py)) |
-| *Patterns* page | Explains the patterns statistics find in the runs (instructor differences, habits, techniques that go together, knock-on effects, limit breaks, least agreement) as a few findings with an action each | Each finding must cite patterns, and every number it writes must be one of theirs ([patterns.py](src/sim2sop/learn/patterns.py), [insights.py](src/sim2sop/agent/insights.py)) |
 
-With the AI writer off, guidelines use the template, manuals need a limits file, and Patterns shows the strongest patterns as found.
+With the AI writer off, guidelines use the template and manuals need a limits file.
 
 ## Demo script (`sim2sop demo`)
 
@@ -149,7 +148,7 @@ sim2sop show | diff A B | export [--pdf] | references | reset [--references --me
 Done and tested (air): the generator with the overspeed scenario and the in-app flight generator, MSFS adapter, ground track, phases, events, annotation matching, reference library and limits, consensus with typical ranges, change detection, update with reasons, approval, correction memory, RAG, verifier loop, HTML, CLI, API and UI.
 
 - **Data:** sea (NMEA) generator; its adapter and profile exist but are untested, and the sea folder has no reference SOPs yet. Land (parallel parking) has a generator, sample rules (`references/land/`, placeholders) and tests, but not a real CARLA capture yet: confirm `MAX_STEER_DEG` and the light-state bits. Confirm MSFS sign conventions against a real capture.
-- **AI:** pre-test Qwen 2.5 7B vs Llama 3.1 8B, including on *Read a manual with AI* and *Patterns* (both are tested only with a scripted model so far). Replace the placeholder references with real POH and aerodrome SOP extracts.
+- **AI:** pre-test Qwen 2.5 7B vs Llama 3.1 8B, including on *Read a manual with AI* (see [samples/manuals/](samples/manuals/) for demo documents and a real run's results). Replace the placeholder references with real POH and aerodrome SOP extracts.
 - **Learning:** student grading and a "Common mistakes" section (stretch).
 - **Product:** per-step charts in the HTML (the UI already has them), quick-reference cards, PDF on the demo machine.
 
