@@ -74,7 +74,6 @@ def _new_seed() -> None:
 
 
 def _surprise() -> None:
-    st.session_state["gen_obstacle"] = random.random() < 0.3
     for k in CHOICES:
         st.session_state[f"gen_{k}"] = random.random() < 0.35
     _new_seed()
@@ -82,7 +81,7 @@ def _surprise() -> None:
 
 def _generate(prof: Profile) -> None:
     ss = st.session_state
-    path = generate_flight(_out_dir(prof), seed=int(ss["gen_seed"]), obstacle=ss["gen_obstacle"],
+    path = generate_flight(_out_dir(prof), seed=int(ss["gen_seed"]),
                            instructor=ss["gen_instructor"].strip().replace(" ", "_").lower() or None,
                            **{k: ss[f"gen_{k}"] for k in CHOICES})
     ss["gen_current"] = path.name
@@ -112,19 +111,13 @@ def _mmss(seconds: float) -> str:
 def _form(prof: Profile) -> None:
     ss = st.session_state
     ss.setdefault("gen_seed", random.randint(1000, 99999))
-    ss.setdefault("gen_obstacle", False)
     ss.setdefault("gen_instructor", "")
     for k in CHOICES:
         ss.setdefault(f"gen_{k}", False)
 
     with st.container(border=True):
         st.markdown("**1 · Choose the flight**")
-        c1, c2 = st.columns(2)
-        c1.radio("Conditions", [False, True], key="gen_obstacle", horizontal=True,
-                 format_func=lambda o: "Around the new crane (NOTAM)" if o else "Normal circuit",
-                 help="Around the crane: wider downwind and a later descent. The flight is tagged "
-                      "'new-obstacle'; 3 such flights that agree count as a technique change.")
-        c2.text_input("Instructor (optional)", key="gen_instructor", placeholder="e.g. Instructor 3")
+        st.text_input("Instructor (optional)", key="gen_instructor", placeholder="e.g. Instructor 3")
         st.caption("What does this instructor do differently? Everything else (speeds, heights, wind, sensor "
                    "noise) varies randomly from flight to flight.")
         cols = st.columns(2)
@@ -135,7 +128,7 @@ def _form(prof: Profile) -> None:
                         help="The same seed and choices always give the same flight.")
         s2.button("New seed", icon=":material/casino:", on_click=_new_seed, width="stretch")
         s3.button("Surprise me", icon=":material/shuffle:", on_click=_surprise, width="stretch",
-                  help="Random conditions, choices and seed.")
+                  help="Random choices and seed.")
         s4.button("Generate flight", type="primary", icon=":material/auto_awesome:", on_click=_generate,
                   args=(prof,), width="stretch")
 
@@ -163,9 +156,6 @@ def _highlights(prof: Profile, record, df: pd.DataFrame, meta: dict) -> list[str
         out.append(":material/bolt: Power correction on short final")
     if choices.get("light_on_roll"):
         out.append(":material/light_mode: Landing light switched on during the take-off roll")
-    if record.meta.environment:
-        out.append(f":material/construction: Tagged **{record.meta.environment}** — the guidelines only change "
-                   "their technique once 3 flights like this agree")
     return out
 
 
@@ -214,8 +204,7 @@ def _rundown(prof: Profile, run_dir: Path) -> None:
 
     with st.container(border=True):
         st.markdown(f"**2 · What's in this flight — {ui.run_title(run_dir.name)}**")
-        st.caption(f"Instructor: {meta.get('instructor', '—').replace('_', ' ').title()} · seed {meta.get('seed')} · "
-                   f"conditions: {record.meta.environment or 'normal'}")
+        st.caption(f"Instructor: {meta.get('instructor', '—').replace('_', ' ').title()} · seed {meta.get('seed')}")
         m = st.columns(4)
         m[0].metric("Length", _mmss(record.meta.duration_s))
         m[1].metric("Data points", f"{record.meta.n_samples:,}", help=f"{prof.sample_hz} per second")
@@ -289,7 +278,7 @@ def _format_guide(prof: Profile) -> None:
         st.code("my_flight_01/\n"
                 "├── telemetry.csv      required: one row per sample, SimConnect column names\n"
                 "├── annotations.json   optional: the instructor's spoken callouts\n"
-                "└── meta.json          optional: instructor, conditions tag", language=None)
+                "└── meta.json          optional: flight name, instructor", language=None)
         st.caption("telemetry.parquet works instead of CSV. Download any generated flight above for a "
                    "complete example.")
     with t2:
@@ -311,17 +300,15 @@ def _format_guide(prof: Profile) -> None:
                 language="json")
         st.caption("`source` is spoken or typed. Audio can be transcribed with `sim2sop transcribe`.")
     with t4:
-        st.code(json.dumps({"run_id": "my_flight_01", "instructor": "instructor_3",
-                            "environment": "new-obstacle"}, indent=2), language="json")
-        st.caption("`environment` tags flights flown under new conditions (leave it out for normal flights). "
-                   "Once 3 tagged flights consistently differ, the guidelines treat it as a technique change.")
+        st.code(json.dumps({"run_id": "my_flight_01", "instructor": "instructor_3"}, indent=2), language="json")
+        st.caption("Both fields are optional: the folder name is used as the flight's name if `run_id` is missing.")
     with t5:
         st.markdown("**In this app:** *1 · Instructor flights* → *Upload a recorded flight* → choose "
-                    "telemetry.csv, and annotations.json if you have one, and type the conditions tag if any.")
+                    "telemetry.csv, and annotations.json if you have one.")
         ui.link_button("runs", "Open Instructor flights", key="gen-runs", primary=False)
         st.markdown("**From the command line** (a single flight folder, or a folder of flight folders):")
         name = st.session_state.get("profile_name", prof.procedure)
-        st.code(f"sim2sop ingest {name} path/to/my_flight_01 [--env new-obstacle]\n"
+        st.code(f"sim2sop ingest {name} path/to/my_flight_01\n"
                 f"sim2sop update {name}", language="bash")
 
 

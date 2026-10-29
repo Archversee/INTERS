@@ -5,7 +5,7 @@ Sim-to-SOP turns instructor simulator runs into practical, step-by-step **guidel
 > The SOP says what's allowed. The guidelines show how the best instructors do it.
 
 The guidelines are **advisory**: what to do, when, why, and the range instructors typically use.
-The existing SOPs, the POH, regulations and NOTAMs are read-only **reference SOPs**:
+The existing SOPs, the POH and regulations are read-only **reference SOPs**:
 - Every guideline is checked against them.
 - A value past a limit is clipped to the limit and flagged.
 - Where a guideline and an SOP differ, the SOP wins.
@@ -22,7 +22,7 @@ python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -e ".[app,dev]"
 
-streamlit run app/streamlit_app.py  # the app; open "Guided demo" for the whole story in five clicks
+streamlit run app/streamlit_app.py  # the app; open "Guided demo" for the whole story in six clicks
 sim2sop demo --provider none      # the same demo script from the command line, no LLM needed
 uvicorn sim2sop.api:app --reload  # REST API at http://localhost:8000/docs
 pytest
@@ -35,9 +35,8 @@ pytest
 | 1. Create, data only | v1 | 1 run → guidelines marked **UNCHECKED** |
 | 2. Add reference SOPs | v2 | C172 POH + aerodrome SOP: each guideline shows its hard limit. Run 1 selects flaps 20 at 89 kt; the value is **clipped to Vfe 85 kt** and flagged |
 | 3. More runs | v3 | 5 runs: typical ranges about 2× tighter, short-final power correction becomes a technique note, the overspeed run is **excluded** from the flaps-20 range |
-| 4. Update | v4 | NOTAM + 3 runs flown around a new crane: technique change detected; **only the downwind and base guidelines change** (5 steps), each with reasons citing the NOTAM |
-| 5. Instructor edit | v5, v6 | Edit the Flaps 10° guideline; the next update applies the same wording to Flaps 20° and 30° |
-| 6. Other domains | | Land and sea adapters and profiles exist; their generators are still TODO |
+| 4. Instructor edit | v4, v5 | Edit the Flaps 10° guideline; the next update applies the same wording to Flaps 20° and 30° |
+| 5. Other domains | | Land and sea adapters and profiles exist; their generators are still TODO |
 
 Each version is written to `data/guidelines/<procedure>/v<N>.html`. Every step in the demo is auto-approved; in real use the instructor approves or rejects each change.
 
@@ -51,11 +50,9 @@ Each version is written to `data/guidelines/<procedure>/v<N>.html`. Every step i
 | Approval | `sim2sop approve` publishes | Each changed step is approved or rejected (`--reject s12`), and a rejected step reverts to the previous version |
 
 How update decides what changed:
-- **New runs from the same environment:** every phase learns from them. Only steps whose numbers moved are rewritten.
-- **Runs tagged with a new environment** (`--env new-obstacle`, or `environment` in `meta.json`):
-  - If at least 3 runs all fall outside a current typical range on the same side, by more than the signal's tolerance, that phase is a **technique change**. Its consensus is rebuilt from the post-change runs only, and other phases are untouched.
-  - With fewer runs, the difference is flagged and held back from learning.
-- **A revised SOP, POH or NOTAM** (same `id`, new `revision`): every step is re-checked, and the steps whose limits changed are re-cited.
+- **New flights:** every phase learns from them. Only steps whose numbers moved are rewritten, each with the reason.
+- **A revised SOP or POH** (same `id`, new `revision`): every step is re-checked, and the steps whose limits changed are re-cited.
+- (Dormant for now: runs tagged with an `environment` in `meta.json` can trigger per-phase technique-change detection. Nothing in the app or the sample data tags runs.)
 - **New instructor corrections:** matching steps are rewritten in the corrected style.
 
 ## Reference SOPs and hard limits
@@ -71,12 +68,11 @@ Documents are copied into `data/references/<procedure>/` and never modified. Lim
 ---
 id: c172_poh          # stable across revisions; a new revision supersedes the old one
 title: C172 POH
-kind: poh             # sop | poh | notam | regulation | handbook | other
+kind: poh             # sop | poh | regulation | handbook | other
 revision: "A"
-environment: new-obstacle    # optional (NOTAMs): violations are only reported for runs tagged with it
 limits:
   - {id: vfe_full, signal: ias_kt, max: 85, when: "flaps_idx >= 2", text: "Max 85 KIAS with flaps beyond 10° (Vfe)"}
-  - {id: crane, signal: track_offset_nm, min: 1.5, phases: [downwind], at: result, text: "..."}
+  - {id: circuit_height_max, signal: agl_ft, max: 1100, phases: [crosswind, downwind], text: "..."}
 requirements:          # actions an SOP makes mandatory: always core guidelines
   - {id: landing_light, key: "toggle:light_landing:1", text: "Landing light on for take-off"}
 ---
@@ -114,7 +110,7 @@ If the provider is unreachable, the pipeline falls back to the template writer. 
 | [profiles/](profiles/) | One YAML per procedure: signals (incl. ground track), phases, events, keywords. **New domain = new file** |
 | [references/](references/) | Sample reference SOPs per domain (**placeholders**, not real POH text) |
 | [src/sim2sop/adapters/](src/sim2sop/adapters/) | MSFS SimConnect, CARLA, NMEA 0183, generic CSV |
-| [src/sim2sop/generate/](src/sim2sop/generate/) | Synthetic runs in each sim's format (air: baseline + new-obstacle scenario) |
+| [src/sim2sop/generate/](src/sim2sop/generate/) | Synthetic runs in each sim's format (air: 5 baseline circuits, plus single flights with chosen technique) |
 | [src/sim2sop/signals/](src/sim2sop/signals/) | Phases, events, annotation matching, limit-violation report |
 | [src/sim2sop/references.py](src/sim2sop/references.py) | Read-only reference library: limits, requirements, revisions |
 | [src/sim2sop/learn/](src/sim2sop/learn/) | DTW consensus and typical ranges, hard limits, change detection, correction memory |
@@ -127,8 +123,7 @@ If the provider is unreachable, the pipeline falls back to the template writer. 
 
 ```bash
 sim2sop generate-data air -n 5                     # baseline runs
-sim2sop generate-data air -n 3 --scenario obstacle # runs around the new obstacle
-sim2sop ingest air_c172_circuit data/raw/air [--env new-obstacle]
+sim2sop ingest air_c172_circuit data/raw/air
 sim2sop add-reference air_c172_circuit <file>...
 sim2sop create air_c172_circuit [--provider anthropic]
 sim2sop update air_c172_circuit
@@ -139,7 +134,7 @@ sim2sop show | diff A B | export [--pdf] | references | reset [--references --me
 
 ## Status and team to-dos
 
-Done and tested (air): the generator with the overspeed and obstacle scenarios, MSFS adapter, ground track, phases, events, annotation matching, reference library and limits, consensus with typical ranges, change detection, update with reasons, approval, correction memory, RAG, verifier loop, HTML, CLI, API and UI.
+Done and tested (air): the generator with the overspeed scenario and the in-app flight generator, MSFS adapter, ground track, phases, events, annotation matching, reference library and limits, consensus with typical ranges, change detection, update with reasons, approval, correction memory, RAG, verifier loop, HTML, CLI, API and UI.
 
 - **Data:** land (CARLA) and sea (NMEA) generators. Their adapters and profiles exist but are untested, and the land and sea folders have no reference SOPs yet. Confirm MSFS sign conventions against a real capture.
 - **AI:** pre-test Qwen 2.5 7B vs Llama 3.1 8B. Replace the placeholder references with real POH and aerodrome SOP extracts. Optionally extract limits from PDFs with the LLM, with instructor confirmation.

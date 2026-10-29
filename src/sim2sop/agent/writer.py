@@ -26,8 +26,13 @@ EDITABLE = ("trigger", "action", "typical")   # fields learned patterns may rewr
 
 
 def limit_text(step: Step) -> str:
-    """Hard limits are quoted from the reference, never paraphrased."""
-    return "; ".join(f"{lim.text} — {lim.cite()}" for lim in step.limits)
+    """Hard limits are quoted from the reference, never paraphrased. The full citation
+    (revision, section) stays on the step's limits."""
+    return "; ".join(f"{lim.text} — {lim.doc_title}" for lim in step.limits)
+
+
+# Units that say what the number is on their own ("74 kt" needs no "airspeed").
+SELF_EXPLANATORY = {"kt", "ft", "fpm", "%", "rpm"}
 
 
 class TemplateWriter:
@@ -36,34 +41,41 @@ class TemplateWriter:
     def __init__(self, profile: Profile):
         self.profile = profile
 
+    def _say(self, sig: str, text: str) -> str:
+        p = self.profile
+        if p.unit(sig) in SELF_EXPLANATORY:
+            return text
+        label = p.label(sig)
+        return f"{text} {label}" if label.startswith("from ") else f"{label} {text}"
+
     def _ranges(self, step: Step, prefix: str, signals: list[str]) -> list[str]:
-        out = []
-        for sig in signals:
-            f = step.facts.get(f"{prefix}.{sig}")
-            if f is not None:
-                out.append(f"{self.profile.label(sig)} {f.fmt_range()}")
-        return out
+        return [self._say(sig, step.facts[f"{prefix}.{sig}"].fmt_range())
+                for sig in signals if f"{prefix}.{sig}" in step.facts]
 
     def write(self, step: Step, feedback: list[str] | None = None) -> dict[str, str | None]:
         p = self.profile
         if step.kind == "threshold" and "action" in step.facts:
             trigger = f"When {p.label(step.signal)} reaches {step.facts['action'].fmt()}."
         else:
-            parts = [f"{p.label(s)} {step.facts[f'trigger.{s}'].fmt()}"
+            parts = [self._say(s, step.facts[f"trigger.{s}"].fmt())
                      for s in p.trigger_for(step.phase) if f"trigger.{s}" in step.facts]
             trigger = f"At about {', '.join(parts)}." if parts else ""
 
-        when = self._ranges(step, "trigger", p.trigger_for(step.phase))
+        # Typical: the action's own range, the conditions it is done at, and only the
+        # outcomes this phase states on purpose (e.g. distance from the runway on downwind).
+        context = ", ".join(self._ranges(step, "trigger", p.trigger_for(step.phase)))
+        head = ""
         if step.kind in ("control", "turn") and "action" in step.facts:
-            when.insert(0, f"{p.label(step.signal)} {step.facts['action'].fmt_range()}")
-        after = self._ranges(step, "result", p.result_for(step.phase))
+            head = f"{p.label(step.signal)} {step.facts['action'].fmt_range()}"
+        extra = [s for s in p.result_for(step.phase) if s not in p.result_signals]
+        after = ", ".join(self._ranges(step, "result", extra))
         n = len(step.runs)
         typical = ""
-        if when:
-            typical = f"Instructors: {', '.join(when)}"
+        if head or context:
+            typical = "Usually " + (f"{head} at {context}" if head and context else head or context)
             if after:
-                typical += f"; then {', '.join(after)}"
-            typical += f" ({n} run{'s' if n != 1 else ''})."
+                typical += f"; then {after}"
+            typical += f" ({n} flight{'s' if n != 1 else ''})."
         out = {
             "trigger": trigger,
             "action": f"{step.label}.",

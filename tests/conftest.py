@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from sim2sop import config
-from sim2sop.generate.air import generate_air_runs, generate_obstacle_runs
+from sim2sop.generate.air import generate_air_runs
 
 
 @pytest.fixture
@@ -22,12 +22,6 @@ def data_dir(tmp_path, monkeypatch) -> Path:
 def air_raw(tmp_path_factory) -> list[Path]:
     """Five generated C172 circuits (session-wide: generation is the slow part)."""
     return generate_air_runs(tmp_path_factory.mktemp("raw") / "air", n=5)
-
-
-@pytest.fixture(scope="session")
-def obstacle_raw(tmp_path_factory) -> list[Path]:
-    """Three circuits flown around the new obstacle (environment "new-obstacle")."""
-    return generate_obstacle_runs(tmp_path_factory.mktemp("raw_obstacle") / "air", n=3)
 
 
 @pytest.fixture

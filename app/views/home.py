@@ -57,7 +57,7 @@ def render() -> None:
     a, b, c = st.columns(3)
     with a.container(border=True, height="stretch"):
         st.markdown(":material/menu_book: **Official limits come first**")
-        st.write("The POH, SOPs and NOTAMs set hard limits. Guidelines never go past them; "
+        st.write("The aircraft manual (POH) and the SOPs set hard limits. Guidelines never go past them; "
                  "anything that does is capped and flagged.")
     with b.container(border=True, height="stretch"):
         st.markdown(":material/flight: **Each flight teaches it more**")

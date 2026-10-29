@@ -101,30 +101,44 @@ def render() -> None:
     st.caption("Advisory guidelines: how instructors typically fly it. Where they differ from an official "
                "document, the official document wins.")
 
-    with st.expander("How to read a guideline", icon=":material/help:"):
-        st.markdown(
-            "- **When** — the moment to act. **Why** — the instructor's own callout.\n"
-            "- **Typical** — the range instructors used across the recorded flights.\n"
-            "- :red[**Hard limit**] — from the official documents; never crossed.\n"
-            "- :blue-badge[Core] every instructor did it · :orange-badge[Technique] only some did · "
-            ":green-badge[Required by SOP] an official document requires it.")
-
+    view = st.segmented_control("View", ["Checklist", "Full detail"], default="Checklist", key="g-view",
+                                label_visibility="collapsed") or "Checklist"
     phases = [p for p in doc.phases if doc.steps_in(p)]
-    pick = st.pills("Phase", ["All"] + phases, default="All", format_func=lambda p: p if p == "All" else ui.phase_title(p),
-                    key=f"phase-{v}")
-    shown = phases if pick in (None, "All") else [pick]
-    n = 0
-    for phase in shown:
-        st.subheader(ui.phase_title(phase))
-        for s in doc.steps_in(phase):
-            n += 1
+    if view == "Checklist":
+        st.caption("One line per step: **what to do** — when to do it · :red-badge[hard limit] from the official "
+                   "documents. Switch to *Full detail* for typical ranges, the instructor's reason, charts and edits.")
+        n = 0
+        for phase in phases:
             with st.container(border=True):
-                head, btn = st.columns([5, 1])
-                head.markdown(f"**{n}. {s.action}**")
-                head.markdown(ui.step_badges(s))
-                if btn.button("Details", key=f"d-{v}-{s.id}", icon=":material/open_in_full:", width="stretch"):
-                    details(s.id, v)
-                ui.guideline_body(s, doc)
+                st.markdown(f"**{ui.phase_title(phase)}**")
+                lines = []
+                for s in doc.steps_in(phase):
+                    n += 1
+                    lines.append(ui.checklist_line(n, s, prof))
+                st.markdown("\n".join(lines))
+    else:
+        with st.expander("How to read a guideline", icon=":material/help:"):
+            st.markdown(
+                "- **When** — the moment to act. **Why** — the instructor's own callout.\n"
+                "- **Typical** — the range instructors used across the recorded flights.\n"
+                "- :red[**Hard limit**] — from the official documents; never crossed.\n"
+                "- :blue-badge[Core] every instructor did it · :orange-badge[Technique] only some did · "
+                ":green-badge[Required by SOP] an official document requires it.")
+        pick = st.pills("Phase", ["All"] + phases, default="All",
+                        format_func=lambda p: p if p == "All" else ui.phase_title(p), key=f"phase-{v}")
+        shown = phases if pick in (None, "All") else [pick]
+        n = 0
+        for phase in shown:
+            st.subheader(ui.phase_title(phase))
+            for s in doc.steps_in(phase):
+                n += 1
+                with st.container(border=True):
+                    head, btn = st.columns([5, 1])
+                    head.markdown(f"**{n}. {s.action}**")
+                    head.markdown(ui.step_badges(s))
+                    if btn.button("Details", key=f"d-{v}-{s.id}", icon=":material/open_in_full:", width="stretch"):
+                        details(s.id, v)
+                    ui.guideline_body(s, doc)
 
     _flags(doc)
     st.download_button("Download printable version (HTML)", render_html.to_html(doc),

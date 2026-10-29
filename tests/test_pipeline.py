@@ -85,7 +85,8 @@ def test_runs_tighten_ranges_and_exclude_violations(data_dir, air_raw, refs_dir)
     assert technique and all(s.phase == "final" for s in technique)
 
 
-def test_obstacle_update_changes_only_downwind_and_base(data_dir, air_raw, obstacle_raw, refs_dir):
+def test_new_flight_updates_only_what_it_changes(data_dir, air_raw, refs_dir, tmp_path):
+    from sim2sop.generate.air import generate_flight
     p = load_profile(PROFILE)
     for f in BASE_REFS:
         references.add_reference(p.procedure, refs_dir / f)
@@ -94,29 +95,15 @@ def test_obstacle_update_changes_only_downwind_and_base(data_dir, air_raw, obsta
     create_guidelines(p, LLM)
     v1 = approve(p)
 
-    references.add_reference(p.procedure, refs_dir / "notam_crane.md")
-    for d in obstacle_raw[:2]:
-        ingest_run(d, p)
-    held = update_guidelines(p, LLM)  # only 2 runs: not enough to call it a technique change
-    assert not any(s.change for s in held.steps if s.phase in ("downwind", "base") and
-                   any("Technique change" in r for r in s.change_reasons))
-    assert any(f.kind == "technique_change" and "waiting for 3" in f.message for f in held.flags)
-    approve(p)
-
-    ingest_run(obstacle_raw[2], p)
+    ingest_run(generate_flight(tmp_path, seed=99), p)
     v = update_guidelines(p, LLM)
-    changed = {s.phase for s in v.steps if s.change}
-    assert changed == {"downwind", "base"}
-    assert v.environment == "new-obstacle"
-    assert all(any("NOTAM" in r for r in s.change_reasons) for s in v.steps if s.change)
-    assert v.status == "draft" and v.pending
-    downwind = [s for s in v.steps if s.phase == "downwind"]
-    assert all(s.facts["result.track_offset_nm"].lo >= 1.5 for s in downwind)
-    assert v.metrics["within_limits"] == 1.0
-    # Untouched phases are word-for-word the previous version.
+    assert len(v.runs) == 6 and v.status == "draft"
+    changed = [s for s in v.steps if s.change]
+    assert changed and len(changed) < len(v.steps)
+    assert all(s.change_reasons for s in changed) and v.metrics["within_limits"] == 1.0
     before, after = step_slots(v1.steps), step_slots(v.steps)
-    untouched = [k for k, s in before.items() if s.phase not in ("downwind", "base")]
-    assert untouched and all(after[k].typical == before[k].typical for k in untouched)
+    same = [k for k, s in after.items() if not s.change and k in before]
+    assert same and all(after[k].typical == before[k].typical for k in same)
 
     reject = v.pending[0]
     published = approve(p, reject_ids=[reject.id])
@@ -170,14 +157,13 @@ def test_generated_flight_follows_the_chosen_technique(data_dir, tmp_path):
     from sim2sop.generate.air import generate_flight
     from sim2sop.ingest import analyse_run
     p = load_profile(PROFILE)
-    fast = generate_flight(tmp_path, seed=7, overspeed=True, traffic_check=True)
-    calm = generate_flight(tmp_path, seed=7, obstacle=True)
-    assert fast.name == "generated_7" and calm.name == "generated_obstacle_7"
+    fast = generate_flight(tmp_path / "a", seed=7, overspeed=True, traffic_check=True)
+    calm = generate_flight(tmp_path / "b", seed=7)
+    assert fast.name == calm.name == "generated_7"
     rec_fast, _ = analyse_run(fast, p)
     rec_calm, _ = analyse_run(calm, p)
-    ias = {r.meta.run_id: next(e for e in r.events if e.key == "toggle:flaps_idx:2").state["ias_kt"]
-           for r in (rec_fast, rec_calm)}
-    assert ias["generated_7"] > 85 > ias["generated_obstacle_7"]
+    ias = [next(e for e in r.events if e.key == "toggle:flaps_idx:2").state["ias_kt"] for r in (rec_fast, rec_calm)]
+    assert ias[0] > 85 > ias[1]
     assert any("Checking for traffic" in f.message for f in rec_fast.flags)
-    assert rec_calm.meta.environment == "new-obstacle" and not storage.list_runs(p.procedure)  # preview only
-
+    assert not any("Checking for traffic" in f.message for f in rec_calm.flags)
+    assert not storage.list_runs(p.procedure)  # preview only

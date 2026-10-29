@@ -52,7 +52,6 @@ def render() -> None:
         "Version": d.version,
         "What happened": ui.mode_title(d),
         "Flights": len(d.runs),
-        "Conditions": d.environment or "Normal",
         "Checked against official limits": "Yes" if d.checked else "No",
         "Steps changed": int(d.metrics.get("steps_changed", 0)),
         "Instructor edits made on it": edits.get(d.version, 0),

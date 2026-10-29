@@ -34,7 +34,7 @@ def _summary(doc) -> None:
 
 
 def cmd_generate_data(args):
-    for p in generate(args.domain, n=args.runs, seed=args.seed, scenario=args.scenario):
+    for p in generate(args.domain, n=args.runs, seed=args.seed):
         print(p)
 
 
@@ -42,10 +42,9 @@ def cmd_ingest(args):
     profile = load_profile(args.profile)
     for d in map(Path, args.run_dirs):
         is_parent = not (d / "meta.json").exists() and any(p.is_dir() for p in d.iterdir())
-        records = ingest_dir(profile, d, args.env) if is_parent else [ingest_run(d, profile, environment=args.env)]
+        records = ingest_dir(profile, d) if is_parent else [ingest_run(d, profile)]
         for r in records:
-            env = f" [{r.meta.environment}]" if r.meta.environment else ""
-            print(f"{r.run_id}{env}: {len(r.events)} events, {len(r.phases)} phases, "
+            print(f"{r.run_id}: {len(r.events)} events, {len(r.phases)} phases, "
                   f"{sum(a.event_id is not None for a in r.annotations)}/{len(r.annotations)} annotations matched")
 
 
@@ -177,7 +176,6 @@ def cmd_demo(args):
     _reset(proc, refs=True, mem=True)
     shutil.rmtree(config.RAW_DIR / "air", ignore_errors=True)
     base = generate("air", n=5)
-    obstacle = generate("air", n=3, scenario="obstacle")
     ref_dir = config.REFERENCES_DIR / profile.references
 
     def report(doc, note):
@@ -210,22 +208,11 @@ def cmd_demo(args):
     print("3. More runs")
     for d in base[1:]:
         ingest_run(d, profile)
-    report(update_guidelines(profile, llm), "5 runs: ranges + technique")
-    publish()
-
-    print("4. Update: NOTAM for a new obstacle + 3 runs flown around it")
-    references.add_reference(proc, ref_dir / "notam_crane.md")
-    for d in obstacle:
-        ingest_run(d, profile)
     v = update_guidelines(profile, llm)
-    report(v, "technique change")
-    print(f"     phases changed: {sorted({s.phase for s in v.steps if s.change})}")
-    for s in v.steps:
-        if s.change:
-            print(f"     {s.id} [{s.phase}] {s.label}: {'; '.join(s.change_reasons[:3])}")
+    report(v, "5 runs: ranges + technique")
     publish()
 
-    print("5. Instructor edit, then the next generation applies it")
+    print("4. Instructor edit, then the next generation applies it")
     flaps10 = next(s for s in v.steps if s.key == "toggle:flaps_idx:1")
     new_action = f"Select {flaps10.label}, then check the flap position indicator."
     report(apply_edit(profile, flaps10.id, "action", new_action), f"edit {flaps10.id}")
@@ -236,7 +223,7 @@ def cmd_demo(args):
             print(f"     {s.id} {s.action}")
     publish()
 
-    print("6. Other domains: land / sea adapters and profiles exist; generators are TODO")
+    print("5. Other domains: land / sea adapters and profiles exist; generators are TODO")
     print(f"\nEdits per version: {edits_per_version(proc)}")
     print(f"Open: {store.html_path(store.latest(proc))}")
 
@@ -254,16 +241,14 @@ def main(argv=None):
     p.add_argument("domain", choices=["air", "land", "sea"])
     p.add_argument("-n", "--runs", type=int, default=5)
     p.add_argument("--seed", type=int)
-    p.add_argument("--scenario", choices=["obstacle"], help="post-NOTAM runs around a new obstacle")
     p.set_defaults(fn=cmd_generate_data)
 
     p = sub.add_parser("ingest", help="ingest run folder(s) into the run library")
     p.add_argument("profile", help=f"profile name: {', '.join(list_profiles())}")
     p.add_argument("run_dirs", nargs="+", help="run folder, or a folder of run folders")
-    p.add_argument("--env", help="environment tag, e.g. new-obstacle (default: from meta.json)")
     p.set_defaults(fn=cmd_ingest)
 
-    p = sub.add_parser("add-reference", help="add read-only reference SOPs / POH / NOTAMs")
+    p = sub.add_parser("add-reference", help="add read-only reference SOPs / POH")
     p.add_argument("profile")
     p.add_argument("files", nargs="+")
     p.set_defaults(fn=cmd_add_reference)

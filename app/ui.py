@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -27,7 +28,7 @@ PROFILE_NAMES = {
 }
 PROVIDERS = {"ollama": "Ollama (local / LAN)", "openai": "OpenAI-compatible API",
              "anthropic": "Anthropic API", "none": "No AI (built-in template)"}
-DOC_KINDS = {"poh": "Aircraft manual (POH)", "sop": "Standard operating procedure", "notam": "NOTAM",
+DOC_KINDS = {"poh": "Aircraft manual (POH)", "sop": "Standard operating procedure",
              "regulation": "Regulation", "handbook": "Handbook (guidance only)", "other": "Document"}
 FLAG_LABELS = {
     "limit_violation": ("Instructor flights that broke a hard limit", ":material/warning:"),
@@ -86,9 +87,7 @@ def phase_title(name: str) -> str:
 def run_title(run_id: str) -> str:
     n = run_id.rsplit("_", 1)[-1]
     if run_id.startswith("generated_"):
-        return f"Generated flight #{n}" + (" (new obstacle)" if "obstacle" in run_id else "")
-    if "obstacle" in run_id:
-        return f"Flight {int(n)} after the new obstacle" if n.isdigit() else run_id
+        return f"Generated flight #{n}"
     return f"Flight {int(n)}" if n.isdigit() else run_id
 
 
@@ -114,19 +113,20 @@ def link_button(page_key: str, label: str, icon: str = ":material/arrow_forward:
 
 # --- sample data --------------------------------------------------------------------------------
 
-def sample_dirs(prof: Profile, obstacle: bool = False) -> list[Path]:
+def sample_dirs(prof: Profile) -> list[Path]:
     raw = config.RAW_DIR / prof.domain
-    dirs = sorted(d for d in raw.glob("*") if d.is_dir() and ("obstacle" in d.name) == obstacle) if raw.exists() else []
+    # "obstacle" folders are left over from an older version of the demo.
+    dirs = sorted(d for d in raw.glob("*") if d.is_dir() and "obstacle" not in d.name) if raw.exists() else []
     if not dirs and prof.domain == "air":
-        dirs = generate(prof.domain, n=3 if obstacle else 5, scenario="obstacle" if obstacle else None)
+        dirs = generate(prof.domain, n=5)
     return dirs
 
 
-def remaining_samples(prof: Profile, obstacle: bool = False) -> list[Path]:
+def remaining_samples(prof: Profile) -> list[Path]:
     if prof.domain != "air":
         return []
     known = {r.run_id for r in storage.list_runs(prof.procedure)}
-    return [d for d in sample_dirs(prof, obstacle) if d.name not in known]
+    return [d for d in sample_dirs(prof) if d.name not in known]
 
 
 def add_flights(prof: Profile, dirs: list[Path]) -> None:
@@ -163,10 +163,7 @@ def refresh_guidelines(prof: Profile, title: str) -> Guidelines | None:
     if doc.pending:
         st.session_state["review_queue"] = {"version": doc.version, "title": title}
     else:
-        waiting = any(f.kind == "technique_change" and "waiting for" in f.message for f in doc.flags)
-        st.session_state["toast"] = f"{title}: the guidelines did not need to change." + (
-            f" Flights in the new conditions are held back until {prof.change_min_runs} of them agree."
-            if waiting else "")
+        st.session_state["toast"] = f"{title}: the guidelines did not need to change."
     return doc
 
 
@@ -224,11 +221,7 @@ def review_dialog(version: int, title: str) -> None:
         return
     prev = store.load(prof.procedure, doc.parent_version) if doc.parent_version else None
     st.markdown(f"### {title}")
-    st.markdown(doc_badges(doc))
-
-    for f in doc.flags:
-        if f.kind == "technique_change":
-            st.info(f.message, icon=":material/swap_horiz:")
+    _review_summary(prof, doc, prev)
     capped = [f.message for f in doc.flags if f.kind == "clipped"]
     if capped:
         st.warning("**Capped at an official limit:** " + " ".join(capped), icon=":material/vertical_align_top:")
@@ -277,10 +270,27 @@ def review_dialog(version: int, title: str) -> None:
     rejects = [sid for sid, d in decisions.items() if d == "Reject"]
     label = "Approve and publish" if not rejects else f"Publish ({len(rejects)} rejected)"
     if st.button(label, type="primary", icon=":material/publish:"):
-        approve(prof, doc.version, None, rejects)
-        st.session_state.pop("review_queue", None)
-        st.session_state["toast"] = f"Version {doc.version} published."
-        st.rerun()
+        _publish(prof, doc, rejects)
+
+
+def _publish(prof: Profile, doc: Guidelines, rejects: list[str]) -> None:
+    approve(prof, doc.version, None, rejects)
+    st.session_state.pop("review_queue", None)
+    st.session_state["toast"] = f"Version {doc.version} published."
+    st.rerun()
+
+
+def _review_summary(prof: Profile, doc: Guidelines, prev: Guidelines | None) -> None:
+    """The headline numbers, and a one-click publish for a quick demo."""
+    m, pm = doc.metrics, prev.metrics if prev else {}
+    c = st.columns([1, 1, 1, 2], vertical_alignment="center")
+    c[0].metric("Flights", len(doc.runs), f"+{len(doc.runs) - len(prev.runs)}" if prev else None)
+    c[1].metric("Guidelines changed", len(doc.pending))
+    c[2].metric("Confidence", f"{m['mean_confidence']:.0%}",
+                f"{(m['mean_confidence'] - pm['mean_confidence']) * 100:+.0f} pts" if pm else None)
+    if c[3].button("Approve all and publish", type="primary", icon=":material/done_all:", key="pub-all",
+                   width="stretch", help="Accept every change below. To reject some, scroll down."):
+        _publish(prof, doc, [])
 
 
 # --- guideline card -----------------------------------------------------------------------------
@@ -318,6 +328,50 @@ def guideline_body(s: Step, doc: Guidelines) -> None:
         st.caption(":material/block: No hard limit in the official documents for this step.")
     else:
         st.caption(":material/gpp_maybe: Not checked — no official documents added yet.")
+
+
+def limit_badges(s: Step, prof: Profile) -> str:
+    """Short red chips for the hard limits beside a step, e.g. "max 85 kt"."""
+    return " ".join(f":red-badge[:material/block: {lim.describe()} {prof.unit(lim.signal) or ''}]".replace(" ]", "]")
+                    for lim in s.limits)
+
+
+def limit_name(lim, prof: Profile) -> str:
+    """A limit in a few words, e.g. "Airspeed max 85 kt"."""
+    label = prof.label(lim.signal)
+    return f"{label[:1].upper()}{label[1:]} {lim.describe()} {prof.unit(lim.signal) or ''}".strip()
+
+
+def when_text(lim, prof: Profile) -> str:
+    """When a limit applies, in plain words: "Flaps 20°/30° · Downwind", or "Always"."""
+    parts = []
+    if lim.when:
+        m = re.fullmatch(r"\s*(\w+)\s*(==|>=|<=|>|<)\s*(-?[\d.]+)\s*", lim.when)
+        toggle = prof.events.toggles.get(m.group(1)) if m else None
+        if toggle:
+            ok = {"==": float.__eq__, ">=": float.__ge__, "<=": float.__le__, ">": float.__gt__, "<": float.__lt__}
+            states = [name for v, name in toggle.states.items() if ok[m.group(2)](float(v), float(m.group(3)))]
+            parts.append(f"{toggle.name} {'/'.join(states)}".strip())
+        else:
+            parts.append(lim.when)
+    if lim.phases:
+        parts.append(", ".join(phase_title(p) for p in lim.phases))
+    return " · ".join(parts) or "Always"
+
+
+def checklist_line(n: int, s: Step, prof: Profile) -> str:
+    """One line per step: what to do, when, and the hard limit."""
+    when = (s.trigger or "").rstrip(".")
+    when = when[:1].lower() + when[1:]
+    tags = []
+    if s.required_by:
+        tags.append(":green-badge[Required]")
+    elif not s.mandatory:
+        tags.append(f":orange-badge[Technique · {s.seen_in}/{s.run_count}]")
+    if s.change:
+        tags.append(":violet-badge[New]" if s.change == "added" else ":violet-badge[Changed]")
+    line = f"{n}. **{s.action.rstrip('.')}**" + (f" — {when}" if when else "")
+    return " ".join([line, limit_badges(s, prof), *tags]).strip()
 
 
 def step_chart(s: Step, doc: Guidelines, prof: Profile) -> None:

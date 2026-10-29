@@ -13,7 +13,7 @@ signals:
   lat_deg:        {category: pose, unit: "°", decimals: 5}
   lon_deg:        {category: pose, unit: "°", decimals: 5}
   track_along_nm: {category: pose, unit: nm, label: distance along runway heading, tolerance: 0.2, decimals: 1}
-  track_offset_nm: {category: pose, unit: nm, label: distance from runway centreline, tolerance: 0.15, decimals: 1}
+  track_offset_nm: {category: pose, unit: nm, label: from the runway centreline, tolerance: 0.15, decimals: 1}
   alt_ft:         {category: pose, unit: ft, label: altitude MSL, tolerance: 100}
   agl_ft:         {category: pose, unit: ft, label: height AGL, tolerance: 100}
   heading_deg:    {category: pose, unit: "°", label: heading, tolerance: 10, angle: true}

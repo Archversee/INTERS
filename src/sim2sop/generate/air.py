@@ -12,10 +12,8 @@ follows them with simple lags. Speeds and heights follow C172 POH-style values w
 run-to-run variation and sensor noise, so consensus and typical ranges have something
 to learn from.
 
-Scenario hooks for the demo:
-  variant 0       selects flaps 20 at about 88 kt, above Vfe 85 KIAS (a limit violation)
-  obstacle=True   "new obstacle" environment: wider downwind (longer crosswind leg) and
-                  a later descent, so the final approach is unchanged
+Scenario hook for the demo: variant 0 selects flaps 20 at about 88 kt, above Vfe 85 KIAS
+(a limit violation).
 """
 
 from __future__ import annotations
@@ -149,12 +147,12 @@ class _Sim:
         })
 
 
-def simulate_circuit(seed: int, variant: int = 0, obstacle: bool = False, *,
+def simulate_circuit(seed: int, variant: int = 0, *,
                      overspeed: bool | None = None, light_on_roll: bool | None = None,
                      traffic_check: bool | None = None,
                      power_correction: bool | None = None) -> tuple[pd.DataFrame, list[dict]]:
     """Fly one circuit. `variant` picks the technique differences between runs unless they
-    are given explicitly; `obstacle` flies the wider pattern used after the new-obstacle NOTAM."""
+    are given explicitly."""
     overspeed = variant == 0 if overspeed is None else overspeed
     light_on_roll = variant % 2 == 1 if light_on_roll is None else light_on_roll
     traffic_check = variant == 2 if traffic_check is None else traffic_check
@@ -213,7 +211,7 @@ def simulate_circuit(seed: int, variant: int = 0, obstacle: bool = False, *,
     s.until(lambda: s.agl >= p["pattern_agl"] - 40)
     s.t_vs, s.t_ias, s.t_throttle = 0, p["downwind_ias"], p["cruise_power"]
     s.say(rng.choice(["Level at circuit height, power set", "Circuit altitude, cruise power"]))
-    crosswind_leg_s = rng.normal(45, 3) + (25 if obstacle else 0)
+    crosswind_leg_s = rng.normal(45, 3)
     s.until(lambda: s.t - t_cw >= crosswind_leg_s)
 
     # Downwind
@@ -229,11 +227,7 @@ def simulate_circuit(seed: int, variant: int = 0, obstacle: bool = False, *,
     s.flaps = 1
     s.say(rng.choice(["Flaps 10 on downwind", "Flaps ten"]))
     s.t_ias = 90 if overspeed else 80
-    if obstacle:
-        # Longer base leg ahead: hold circuit height for longer before descending.
-        s.at(28, t_vs=-400)
-    else:
-        s.t_vs = -400
+    s.t_vs = -400
     s.hold(rng.normal(18, 3))
 
     # Base
@@ -337,30 +331,12 @@ def generate_air_runs(out_dir: Path, n: int = 5, seed: int = 172) -> list[Path]:
     return paths
 
 
-OBSTACLE_ENV = "new-obstacle"
-
-
-def generate_obstacle_runs(out_dir: Path, n: int = 3, seed: int = 500) -> list[Path]:
-    """Circuits flown after the new-obstacle NOTAM, tagged with its environment."""
-    paths = []
-    for i in range(n):
-        variant = 4 + 2 * i  # even variants: no short-final power correction or extra callouts
-        df, notes = simulate_circuit(seed + i, variant=variant, obstacle=True)
-        paths.append(_write_run(out_dir, f"air_c172_circuit_obstacle_{i + 1:02d}", df, notes, {
-            "instructor": f"instructor_{(i % 2) + 1}", "seed": seed + i, "variant": variant,
-            "environment": OBSTACLE_ENV}))
-    return paths
-
-
-def generate_flight(out_dir: Path, seed: int, obstacle: bool = False, overspeed: bool = False,
+def generate_flight(out_dir: Path, seed: int, overspeed: bool = False,
                     light_on_roll: bool = False, traffic_check: bool = False,
                     power_correction: bool = False, instructor: str | None = None) -> Path:
     """One flight with the technique choices made explicitly (the app's flight generator)."""
     choices = {"overspeed": overspeed, "light_on_roll": light_on_roll,
                "traffic_check": traffic_check, "power_correction": power_correction}
-    df, notes = simulate_circuit(seed, obstacle=obstacle, **choices)
-    run_id = f"generated_{'obstacle_' if obstacle else ''}{seed}"
+    df, notes = simulate_circuit(seed, **choices)
     meta = {"instructor": instructor or "generated", "seed": seed, "choices": choices}
-    if obstacle:
-        meta["environment"] = OBSTACLE_ENV
-    return _write_run(out_dir, run_id, df, notes, meta)
+    return _write_run(out_dir, f"generated_{seed}", df, notes, meta)
